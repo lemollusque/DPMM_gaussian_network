@@ -26,6 +26,12 @@ trueDAG <- as(myDAG, "matrix")
 truegraph <- 1*(trueDAG != 0)
 data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
 
+fit_joint_dp <- function(y, X, iter=200) {
+  Z <- scale(cbind(X, y))              # standardize jointly is often best
+  dp <- DirichletProcessMvnormal(Z)
+  dp <- Fit(dp, iter)
+  dp
+}
 
 
 get_logl = function(obs, multinomial=T, iteration=500){
@@ -44,6 +50,88 @@ get_logl = function(obs, multinomial=T, iteration=500){
   
   return(logl)
 }
+
+
+cond_loglik_from_joint <- function(dp, y, X) {
+  #Standardize joint data 
+  Z  <- scale(cbind(X, y))
+  d  <- ncol(as.matrix(X))
+  Xs <- Z[, 1:d, drop = FALSE]
+  ys <- Z[, d + 1]
+  
+  N <- nrow(Xs)
+  
+  #Extract fitted mixture parameters 
+  pis    <- dp$weights                      # length K
+  mus    <- dp$clusterParameters$mu         # list, each length d+1
+  Sigmas <- dp$clusterParameters$sig        # list, each (d+1)x(d+1)
+  
+  K <- length(pis)
+  stopifnot(length(mus)/ncol(Z) == K, length(Sigmas)/(ncol(Z)^2) == K)
+  
+  logp <- numeric(N)
+  
+  #Loop over observations 
+  for (i in 1:N) {
+    
+    xi <- matrix(Xs[i, ], nrow = d)
+    
+    log_w_unnorm <- numeric(K)
+    log_comp_y   <- numeric(K)
+    
+    # Loop over mixture components 
+    for (k in 1:K) {
+      
+      mu  <- mus[,,k]
+      Sig <- Sigmas[,,k]
+      
+      ## Partition mean and covariance
+      mu_x <- matrix(mu[1:d], nrow = d)
+      mu_y <- mu[d + 1]
+      
+      S_xx <- Sig[1:d,     1:d,     drop = FALSE]
+      S_xy <- Sig[1:d,     d + 1,   drop = FALSE]
+      S_yx <- Sig[d + 1,   1:d,     drop = FALSE]
+      S_yy <- Sig[d + 1,   d + 1]
+      
+      #x-dependent mixture weights 
+      log_px <- mvtnorm::dmvnorm(
+        x     = t(xi),
+        mean  = as.numeric(mu_x),
+        sigma = S_xx,
+        log   = TRUE
+      )
+      
+      log_w_unnorm[k] <- log(pis[k]) + log_px
+      
+      # Conditional Gaussian y | x 
+      invSxx <- solve(S_xx)
+      
+      m <- mu_y + as.numeric(S_yx %*% invSxx %*% (xi - mu_x))
+      V <- as.numeric(S_yy - S_yx %*% invSxx %*% S_xy)
+      
+      ## numerical safety
+      V <- max(V, 1e-10)
+      
+      log_comp_y[k] <- dnorm(
+        ys[i],
+        mean = m,
+        sd   = sqrt(V),
+        log  = TRUE
+      )
+    }
+    
+    #Mixture log-density ------------------------------------------
+    log_w <- log_w_unnorm - matrixStats::logSumExp(log_w_unnorm)
+    
+    logp[i] <- matrixStats::logSumExp(log_w + log_comp_y)
+  }
+  
+  #Return conditional log score -----------------------------------
+  sum(logp)
+}
+
+
 
 
 ##############################################################
@@ -84,19 +172,15 @@ for(k in 1:dag.counter) {
       
       if(sum(pax) == 0) {  # Compute local score
         print("no pax")
-        loc_score <- get_logl(data[,x], multinomial=F) 
-      }
-      else if(sum(pax) == 1){
-        print("1 pax")
-        logl_pax = get_logl(data[ ,which(pax==1)], multinomial=F)
-        logl_xpax = get_logl(data[ ,c(x, which(pax==1))])
-        loc_score = logl_xpax - logl_pax
+        dp <- DirichletProcessGaussian(scale(data[,x]))
+        dp <- Fit(dp, 200)
+        loc_score <- sum(log(Predictive(dp$mixingDistribution, scale(data[,x]))))
       }
       else {
-        print("more pax")
-        logl_pax = get_logl(data[ ,which(pax==1)])
-        logl_xpax = get_logl(data[ ,c(x, which(pax==1))])
-        loc_score = logl_xpax - logl_pax
+        print("pax")
+        dp <- DirichletProcessMvnormal(scale(cbind(data[ ,which(pax==1)], data[,x])))
+        dp <- Fit(dp, 200)
+        loc_score <- cond_loglik_from_joint(dp, data[,x], data[ ,which(pax==1)])
       }
       parent.scores[[x]][length(set)+1, ] <- c(pax.str, loc_score)
     }
@@ -129,3 +213,5 @@ b <- true.p[shd.order]
 
 plot(a, type="l")
 plot(b, type="l")
+
+
