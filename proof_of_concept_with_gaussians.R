@@ -51,7 +51,7 @@ data <- data.frame(x1, x2, x3, x4, x5)
 
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
   
-  y <- dp_data[,1]
+  y <- dp_data[,1] #child node is in the first column
   X <- as.matrix(dp_data[,-1, drop=FALSE])
   
   mu_y <- mu[1]
@@ -64,11 +64,11 @@ loglik_cond_component_dp <- function(dp_data, mu, Sigma) {
   
   
   # Cholesky of S_xx 
-  U <- chol(S_xx)
-  v <- backsolve(U, forwardsolve(t(U), t(S_yx)))
+  L = t(base::chol(S_xx))
+  v <- backsolve(t(L), forwardsolve(L, t(S_yx)))
   beta <- as.numeric(v)     
   
-  w <- backsolve(U, forwardsolve(t(U), S_xy))     
+  w <- backsolve(t(L), forwardsolve(L, S_xy))     
   quad <- as.numeric(S_yx %*% w)                 
   sigma2 <- S_yy - quad
   
@@ -77,8 +77,8 @@ loglik_cond_component_dp <- function(dp_data, mu, Sigma) {
   
   resid <- y - mean_cond
   
-  ll <- -0.5 * (log(2*pi) + log(sigma2) + (resid^2)/sigma2)
-  ll
+  ll_component <- -0.5 * (log(2*pi) + log(sigma2) + (resid^2)/sigma2)
+  ll_component
 
 
 }
@@ -115,6 +115,7 @@ parents[[2]] = c("x1", "x2", "x3")
 parents[[3]] = c("x1", "x2", "x4")
 parents[[4]] = c("x1", "x2", "x3", "x4")
 for(i in 1:length(parents)){
+  set.seed(101)
   pax = parents[[i]]
   dp_data = scale(data[ ,c("x5" , pax)]) 
   dp <- DirichletProcessMvnormal(dp_data)
@@ -137,7 +138,7 @@ dp_data = scale(data[ ,c("x5" , pax)])
 
 
 dp <- DirichletProcessMvnormal(dp_data)
-dp <- Fit(dp, 200)
+dp <- Fit(dp, 2000)
                    
 mus    <- dp$clusterParameters$mu         
 Sigmas <- dp$clusterParameters$sig 
