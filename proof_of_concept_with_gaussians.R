@@ -99,12 +99,16 @@ loglik_cond_dp <- function(dp_data, pis, mus, Sigmas) {
 }
 
 ll = list()
+bic = list()
 
-parents = list()
-parents[[1]] = c("x1", "x2")
-parents[[2]] = c("x1", "x2", "x3")
-parents[[3]] = c("x1", "x2", "x4")
-parents[[4]] = c("x1", "x2", "x3", "x4")
+parents <- list(
+  c("x1"),
+  c("x2"),
+  c("x1","x2"),
+  c("x1","x2","x3"),
+  c("x1","x2","x4"),
+  c("x1","x2","x3","x4")
+)
 for(i in 1:length(parents)){
   set.seed(101)
   pax = parents[[i]]
@@ -118,10 +122,21 @@ for(i in 1:length(parents)){
   
   # loglikelihood
   ll[[i]] <- loglik_cond_dp(dp_data, pis, mus, Sigmas)
-  bic[[i]] <- -2*ll[[i]] + length(pax)*log(nrow(dp_data))
-}
   
+  n <- nrow(dp_data)
+  d <- ncol(dp_data)              
+  K <- length(dp$weights)         
+  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
+  bic[[i]] <- -2 * ll[[i]] + p * log(n)
+}
+
 plot(1:length(parents), ll)
+plot(1:length(parents), bic)
+
+
+post <- -0.5 * unlist(bic)
+p <- exp(post - logSumExp(post))
+plot(1:length(parents), p)
 
 
 # compare means and covs
