@@ -65,46 +65,37 @@ loglik_cond_component_dp <- function(dp_data, mu, Sigma) {
   
   # Cholesky of S_xx 
   L = t(base::chol(S_xx))
-  v <- backsolve(t(L), forwardsolve(L, t(S_yx)))
-  beta <- as.numeric(v)     
   
-  w <- backsolve(t(L), forwardsolve(L, S_xy))     
-  quad <- as.numeric(S_yx %*% w)                 
-  sigma2 <- S_yy - quad
+  #conditional distr (mu and Sigma)
+  w <- forwardsolve(L, t(X) - mu_x)
+  z = backsolve(t(L), w)
+  mu_cond = drop(mu_y + S_yx %*% z)
   
-  Xm <- sweep(X, 2, mu_x, "-")    
-  mean_cond <- mu_y + as.numeric(Xm %*% beta)
+  W <- forwardsolve(L, S_xy)
+  Z = backsolve(t(L), W)
+  S_cond = S_yy - as.numeric(S_yx %*% Z)
+    
+  # per-observation log density
+  dnorm(y, mean = mu_cond, sd = sqrt(S_cond), log = TRUE)
   
-  resid <- y - mean_cond
-  
-  ll_component <- -0.5 * (log(2*pi) + log(sigma2) + (resid^2)/sigma2)
-  ll_component
-
-
 }
-
-
-logsumexp_vec <- function(a) {
-  m <- max(a)
-  m + log(sum(exp(a - m)))
-}
-
 
 
 loglik_cond_dp <- function(dp_data, pis, mus, Sigmas) {
   n <- nrow(dp_data)
   K <- length(pis)
+  
   logpis <- log(pis)
   
-  # compute n x C matrix of log(pi_c) + log p_c(y|x)
-  ll_mat <- matrix(NA_real_, n, K)
+  # n x K matrix: entry (i,k) = log pi_k + log p_k(y_i | x_i)
+  ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
   for (k in 1:K) {
-    ll_mat[,k] <- logpis[k] + loglik_cond_component_dp(dp_data, mus[,,k], Sigmas[,,k])
+    ll_mat[, k] <- logpis[k] + loglik_cond_component_dp(dp_data, mus[, , k], Sigmas[, , k])
   }
   
-  # row-wise logsumexp
-  ll_i <- apply(ll_mat, 1, logsumexp_vec)
-  sum(ll_i)
+  # total log-likelihood: sum_i logsumexp_k ll_mat[i,k]
+  m <- apply(ll_mat, 1, max)
+  sum(m + log(rowSums(exp(ll_mat - m))))
 }
 
 ll = list()
@@ -119,14 +110,15 @@ for(i in 1:length(parents)){
   pax = parents[[i]]
   dp_data = scale(data[ ,c("x5" , pax)]) 
   dp <- DirichletProcessMvnormal(dp_data)
-  dp <- Fit(dp, 1000)
+  dp <- Fit(dp, 200)
   
   pis    <- dp$weights                     
   mus    <- dp$clusterParameters$mu         
   Sigmas <- dp$clusterParameters$sig   
   
-  
+  # loglikelihood
   ll[[i]] <- loglik_cond_dp(dp_data, pis, mus, Sigmas)
+  bic[[i]] <- -2*ll[[i]] + length(pax)*log(nrow(dp_data))
 }
   
 plot(1:length(parents), ll)
