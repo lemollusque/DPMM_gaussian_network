@@ -15,7 +15,7 @@ library(ggplot2)
 set.seed(101)
 N <- 100  # number of samples
 
-x1 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1]) # TODO check wiith 0 ,1 
+x1 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])  
 x2 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
 x3 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
 x4 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
@@ -26,7 +26,7 @@ data <- data.frame(x1, x2, x3, x4, x5)
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
   
   y <- dp_data[,1] #child node is in the first column
-  X <- as.matrix(dp_data[,-1, drop=FALSE])
+  X <- as.matrix(dp_data[,-1, drop=FALSE]) #parents
   
   mu_y <- mu[1]
   mu_x <- mu[-1]
@@ -59,15 +59,13 @@ loglik_cond_dp <- function(dp_data, pis, mus, Sigmas) {
   n <- nrow(dp_data)
   K <- length(pis)
   
-  logpis <- log(pis)
-  
   #entry (i,k) = log pi_k + log p_k(y_i | x_i)
   ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
   for (k in 1:K) {
-    ll_mat[, k] <- logpis[k] + loglik_cond_component_dp(dp_data, mus[, , k], Sigmas[, , k])
+    ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp(dp_data, mus[, , k], Sigmas[, , k])
   }
   
-  # total log-likelihood: sum_i logsumexp_k ll_mat[i,k]
+  # total log-likelihood
   m <- apply(ll_mat, 1, max)
   sum(m + log(rowSums(exp(ll_mat - m))))
 }
@@ -76,15 +74,13 @@ loglik_dp <- function(dp_data, pis, mus, Sigmas) {
   n <- nrow(dp_data)
   K <- length(pis)
   
-  logpis <- log(pis)
-  
   #entry (i,k) = log pi_k + log p_k(y_i | x_i)
   ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
   for (k in 1:K) {
-    ll_mat[, k] <- logpis[k] + dnorm(dp_data, mean = mus[, , k], sd = sqrt(Sigmas[, , k]), log = TRUE)
+    ll_mat[, k] <- log(pis[k]) + dnorm(dp_data, mean = mus[, , k], sd = sqrt(Sigmas[, , k]), log = TRUE)
   }
   
-  # total log-likelihood: sum_i logsumexp_k ll_mat[i,k]
+  # total log-likelihood
   m <- apply(ll_mat, 1, max)
   sum(m + log(rowSums(exp(ll_mat - m))))
 }
@@ -94,6 +90,7 @@ dp_ll = function(dat, n_iter){
   # remaining parents
   if (ncol(dat)<2){
     
+    # fit gaussian DP
     dp <- DirichletProcessGaussian(dat)
     dp <- Fit(dp, n_iter)
     
@@ -106,6 +103,7 @@ dp_ll = function(dat, n_iter){
     
   }
   else{
+    # Fit multivariate normal
     dp <- DirichletProcessMvnormal(dat)
     dp <- Fit(dp, n_iter)
     
@@ -114,13 +112,21 @@ dp_ll = function(dat, n_iter){
     Sigmas <- dp$clusterParameters$sig   
     ll = loglik_cond_dp(dat, pis, mus, Sigmas)
   }
-  ll
+  
+  # define bic
+  n <- nrow(dat)
+  d <- ncol(dat)              
+  K <- length(dp$numberClusters)         
+  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
+  bic <- -2 * ll + p * log(n)
+  
+  list(ll = ll, bic = bic)
+  
 }
 
 
 
-ll = list()
-bic = list()
+score = list()
 
 parents <- list(
   c(),
@@ -138,23 +144,22 @@ for(i in 1:length(parents)){
   
   
   # loglikelihood
-  ll[[i]] <- dp_ll(dp_data, 10)
+  ll = dp_ll(dp_data, 20)
+  score[[i]] <- ll$bic
   
-  n <- nrow(dp_data)
-  d <- ncol(dp_data)              
-  K <- length(dp$weights)         
-  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
-  bic[[i]] <- -2 * ll[[i]] + p * log(n)
 }
 
-plot(1:length(parents), ll)
-plot(1:length(parents), bic)
+labs <- sapply(parents, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
 
 
-post <- -0.5 * unlist(bic)
+plot(1:length(parents), score, pch=19, xaxt="n",
+     xlab="Parent set", ylab="BIC")
+axis(1, seq_len(length(parents)), labels=labs, las=2)
+
+
+post <- -0.5 * unlist(score)
 p <- exp(post - logSumExp(post))
-plot(1:length(parents), p)
-
-
-
+plot(1:length(parents), p, pch=19, xaxt="n",
+     xlab="Parent set", ylab="softmax")
+axis(1, seq_len(length(parents)), labels=labs, las=2)
 
