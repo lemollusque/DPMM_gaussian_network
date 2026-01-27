@@ -22,32 +22,6 @@ x4 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
 x5 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 
 data <- data.frame(x1, x2, x3, x4, x5)
-# 
-# trueDAG <- matrix(0, nrow = ncol(data), ncol = ncol(data),
-#                   dimnames = list(names(data), names(data)))
-# # parents 
-# trueDAG["x1", "x5"] <- 1
-# trueDAG["x2", "x5"] <- 1
-# 
-# # add DAGs with more parents
-# all.dags <- list()
-# all.dags[[1]] <- trueDAG
-# 
-# d = trueDAG
-# d["x3", "x5"] <- 1
-# all.dags[[2]] <- d
-# 
-# d = trueDAG
-# d["x4", "x5"] <- 1
-# all.dags[[3]] <- d
-# 
-# d = trueDAG
-# d["x3", "x5"] <- 1
-# d["x4", "x5"] <- 1
-# all.dags[[4]] <- d
-
-
-
 
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
   
