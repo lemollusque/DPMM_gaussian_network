@@ -24,7 +24,6 @@ x5 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 data <- data.frame(x1, x2, x3, x4, x5)
 
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
-  
   y <- dp_data[,1] #child node is in the first column
   X <- as.matrix(dp_data[,-1, drop=FALSE]) #parents
   
@@ -35,7 +34,6 @@ loglik_cond_component_dp <- function(dp_data, mu, Sigma) {
   S_yx <- Sigma[1,-1, drop=FALSE]  
   S_xy <- Sigma[-1,1, drop=FALSE]   
   S_xx <- Sigma[-1,-1, drop=FALSE] 
-  
   
   # Cholesky of S_xx 
   L = t(base::chol(S_xx))
@@ -51,7 +49,6 @@ loglik_cond_component_dp <- function(dp_data, mu, Sigma) {
     
   # log density
   dnorm(y, mean = mu_cond, sd = sqrt(S_cond), log = TRUE)
-  
 }
 
 
@@ -64,7 +61,6 @@ loglik_cond_dp <- function(dp_data, pis, mus, Sigmas) {
   for (k in 1:K) {
     ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp(dp_data, mus[, , k], Sigmas[, , k])
   }
-  
   # total log-likelihood
   m <- apply(ll_mat, 1, max)
   sum(m + log(rowSums(exp(ll_mat - m))))
@@ -79,7 +75,6 @@ loglik_dp <- function(dp_data, pis, mus, Sigmas) {
   for (k in 1:K) {
     ll_mat[, k] <- log(pis[k]) + dnorm(dp_data, mean = mus[, , k], sd = sqrt(Sigmas[, , k]), log = TRUE)
   }
-  
   # total log-likelihood
   m <- apply(ll_mat, 1, max)
   sum(m + log(rowSums(exp(ll_mat - m))))
@@ -87,9 +82,8 @@ loglik_dp <- function(dp_data, pis, mus, Sigmas) {
 
 dp_ll = function(dat, n_iter){
   #first column = child node
-  # remaining parents
+  #remaining columns = parents
   if (ncol(dat)<2){
-    
     # fit gaussian DP
     dp <- DirichletProcessGaussian(dat)
     dp <- Fit(dp, n_iter)
@@ -98,9 +92,6 @@ dp_ll = function(dat, n_iter){
     mus    <- dp$clusterParameters[[1]]         
     Sigmas <- dp$clusterParameters[[2]]  
     ll = loglik_dp(dat, pis, mus, Sigmas)
-    
-    
-    
   }
   else{
     # Fit multivariate normal
@@ -112,7 +103,6 @@ dp_ll = function(dat, n_iter){
     Sigmas <- dp$clusterParameters$sig   
     ll = loglik_cond_dp(dat, pis, mus, Sigmas)
   }
-  
   # define bic
   n <- nrow(dat)
   d <- ncol(dat)              
@@ -162,4 +152,3 @@ p <- exp(post - logSumExp(post))
 plot(1:length(parents), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
 axis(1, seq_len(length(parents)), labels=labs, las=2)
-
