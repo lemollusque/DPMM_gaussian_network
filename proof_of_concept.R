@@ -26,110 +26,110 @@ trueDAG <- as(myDAG, "matrix")
 truegraph <- 1*(trueDAG != 0)
 data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
 
-fit_joint_dp <- function(y, X, iter=200) {
-  Z <- scale(cbind(X, y))              # standardize jointly is often best
-  dp <- DirichletProcessMvnormal(Z)
-  dp <- Fit(dp, iter)
-  dp
+
+loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
+  
+  y <- dp_data[,1] #child node is in the first column
+  X <- as.matrix(dp_data[,-1, drop=FALSE])
+  
+  mu_y <- mu[1]
+  mu_x <- mu[-1]
+  
+  S_yy <- Sigma[1,1]
+  S_yx <- Sigma[1,-1, drop=FALSE]  
+  S_xy <- Sigma[-1,1, drop=FALSE]   
+  S_xx <- Sigma[-1,-1, drop=FALSE] 
+  
+  
+  # Cholesky of S_xx 
+  L = t(base::chol(S_xx))
+  
+  #conditional distr (mu and Sigma)
+  w <- forwardsolve(L, t(X) - mu_x)
+  z = backsolve(t(L), w)
+  mu_cond = drop(mu_y + S_yx %*% z)
+  
+  W <- forwardsolve(L, S_xy)
+  Z = backsolve(t(L), W)
+  S_cond = S_yy - as.numeric(S_yx %*% Z)
+  
+  # log density
+  dnorm(y, mean = mu_cond, sd = sqrt(S_cond), log = TRUE)
+  
 }
 
 
-get_logl = function(obs, multinomial=T, iteration=500){
-  obs = scale(obs)
-  if(multinomial){
-    dp = DirichletProcessMvnormal(obs)
+loglik_cond_dp <- function(dp_data, pis, mus, Sigmas) {
+  n <- nrow(dp_data)
+  K <- length(pis)
+  
+  logpis <- log(pis)
+  
+  #entry (i,k) = log pi_k + log p_k(y_i | x_i)
+  ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
+  for (k in 1:K) {
+    ll_mat[, k] <- logpis[k] + loglik_cond_component_dp(dp_data, mus[, , k], Sigmas[, , k])
+  }
+  
+  # total log-likelihood: sum_i logsumexp_k ll_mat[i,k]
+  m <- apply(ll_mat, 1, max)
+  sum(m + log(rowSums(exp(ll_mat - m))))
+}
+
+loglik_dp <- function(dp_data, pis, mus, Sigmas) {
+  n <- nrow(dp_data)
+  K <- length(pis)
+  
+  logpis <- log(pis)
+  
+  #entry (i,k) = log pi_k + log p_k(y_i | x_i)
+  ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
+  for (k in 1:K) {
+    ll_mat[, k] <- logpis[k] + dnorm(dp_data, mean = mus[, , k], sd = sqrt(Sigmas[, , k]), log = TRUE)
+  }
+  
+  # total log-likelihood: sum_i logsumexp_k ll_mat[i,k]
+  m <- apply(ll_mat, 1, max)
+  sum(m + log(rowSums(exp(ll_mat - m))))
+}
+
+dp_ll = function(dat, n_iter){
+  #first column = child node
+  # remaining parents
+  if (ncol(dat)<2){
+    
+    dp <- DirichletProcessGaussian(dat)
+    dp <- Fit(dp, n_iter)
+    
+    pis    <- dp$weights                     
+    mus    <- dp$clusterParameters[[1]]         
+    Sigmas <- dp$clusterParameters[[2]]  
+    ll = loglik_dp(dat, pis, mus, Sigmas)
+    
+    
+    
   }
   else{
-    dp = DirichletProcessGaussian(obs)
-  }
-  dp = Fit(dp, iteration)
-  
-  densities = Predictive(dp$mixingDistribution, obs)
-  logd = log(densities)
-  logl = sum(logd)
-  
-  return(logl)
-}
-
-
-cond_loglik_from_joint <- function(dp, y, X) {
-  #Standardize joint data 
-  Z  <- scale(cbind(X, y))
-  d  <- ncol(as.matrix(X))
-  Xs <- Z[, 1:d, drop = FALSE]
-  ys <- Z[, d + 1]
-  
-  N <- nrow(Xs)
-  
-  #Extract fitted mixture parameters 
-  pis    <- dp$weights                      # length K
-  mus    <- dp$clusterParameters$mu         # list, each length d+1
-  Sigmas <- dp$clusterParameters$sig        # list, each (d+1)x(d+1)
-  
-  K <- length(pis)
-  stopifnot(length(mus)/ncol(Z) == K, length(Sigmas)/(ncol(Z)^2) == K)
-  
-  logp <- numeric(N)
-  
-  #Loop over observations 
-  for (i in 1:N) {
+    dp <- DirichletProcessMvnormal(dat)
+    dp <- Fit(dp, n_iter)
     
-    xi <- matrix(Xs[i, ], nrow = d)
-    
-    log_w_unnorm <- numeric(K)
-    log_comp_y   <- numeric(K)
-    
-    # Loop over mixture components 
-    for (k in 1:K) {
-      
-      mu  <- mus[,,k]
-      Sig <- Sigmas[,,k]
-      
-      ## Partition mean and covariance
-      mu_x <- matrix(mu[1:d], nrow = d)
-      mu_y <- mu[d + 1]
-      
-      S_xx <- Sig[1:d,     1:d,     drop = FALSE]
-      S_xy <- Sig[1:d,     d + 1,   drop = FALSE]
-      S_yx <- Sig[d + 1,   1:d,     drop = FALSE]
-      S_yy <- Sig[d + 1,   d + 1]
-      
-      #x-dependent mixture weights 
-      log_px <- mvtnorm::dmvnorm(
-        x     = t(xi),
-        mean  = as.numeric(mu_x),
-        sigma = S_xx,
-        log   = TRUE
-      )
-      
-      log_w_unnorm[k] <- log(pis[k]) + log_px
-      
-      # Conditional Gaussian y | x 
-      invSxx <- solve(S_xx)
-      
-      m <- mu_y + as.numeric(S_yx %*% invSxx %*% (xi - mu_x))
-      V <- as.numeric(S_yy - S_yx %*% invSxx %*% S_xy)
-      
-      ## numerical safety
-      V <- max(V, 1e-10)
-      
-      log_comp_y[k] <- dnorm(
-        ys[i],
-        mean = m,
-        sd   = sqrt(V),
-        log  = TRUE
-      )
-    }
-    
-    #Mixture log-density ------------------------------------------
-    log_w <- log_w_unnorm - matrixStats::logSumExp(log_w_unnorm)
-    
-    logp[i] <- matrixStats::logSumExp(log_w + log_comp_y)
+    pis    <- dp$weights                     
+    mus    <- dp$clusterParameters$mu         
+    Sigmas <- dp$clusterParameters$sig   
+    ll = loglik_cond_dp(dat, pis, mus, Sigmas)
   }
   
-  #Return conditional log score -----------------------------------
-  sum(logp)
+  n <- nrow(dat)
+  d <- ncol(dat)              
+  K <- length(dp$numberClusters)         
+  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
+  bic <- -2 * ll + p * log(n)
+  
+  
+  list(ll = ll, bic = bic)
+  
 }
+
 
 
 
@@ -162,26 +162,16 @@ for(k in 1:dag.counter) {
   curr_score <- 0
   
   for(x in 1:n) {
-    print(x)
     set <- parent.scores[[x]]$sets
     pax <- dag[,x]
     pax.str <- paste(pax, collapse = "")  # parents of x
     check <- is.na(match(set, pax.str))  # check if parent set is already there
     
     if(all(check)) {  # new parent set
+      dp_data = scale(data[ ,c(x , pax)])
       
-      if(sum(pax) == 0) {  # Compute local score
-        print("no pax")
-        dp <- DirichletProcessGaussian(scale(data[,x]))
-        dp <- Fit(dp, 200)
-        loc_score <- sum(log(Predictive(dp$mixingDistribution, scale(data[,x]))))
-      }
-      else {
-        print("pax")
-        dp <- DirichletProcessMvnormal(scale(cbind(data[ ,which(pax==1)], data[,x])))
-        dp <- Fit(dp, 200)
-        loc_score <- cond_loglik_from_joint(dp, data[,x], data[ ,which(pax==1)])
-      }
+      ll = dp_ll(dp_data, 1000)
+      loc_score <- ll$bic
       parent.scores[[x]][length(set)+1, ] <- c(pax.str, loc_score)
     }
     
@@ -213,5 +203,3 @@ b <- true.p[shd.order]
 
 plot(a, type="l")
 plot(b, type="l")
-
-
