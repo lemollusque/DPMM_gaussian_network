@@ -15,10 +15,10 @@ library(ggplot2)
 set.seed(101)
 N <- 100  # number of samples
 
-x1 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])  
-x2 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
-x3 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
-x4 <- rnorm(N, mean=sample(1:10)[1], sd=sample(1:10)[1])
+x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
+x2 <- rnorm(N, mean=sample(1:10)[1], sd=1)
+x3 <- rnorm(N, mean=sample(1:10)[1], sd=1)
+x4 <- rnorm(N, mean=sample(1:10)[1], sd=1)
 x5 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 
 data <- data.frame(x1, x2, x3, x4, x5)
@@ -106,7 +106,7 @@ dp_ll = function(dat, n_iter){
   # define bic
   n <- nrow(dat)
   d <- ncol(dat)              
-  K <- length(dp$numberClusters)         
+  K <- dp$numberClusters        
   p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
   bic <- -2 * ll + p * log(n)
   
@@ -116,7 +116,8 @@ dp_ll = function(dat, n_iter){
 
 
 
-score = list()
+ll = list()
+bic = list()
 
 parents <- list(
   c(),
@@ -134,20 +135,25 @@ for(i in 1:length(parents)){
   
   
   # loglikelihood
-  ll = dp_ll(dp_data, 20)
-  score[[i]] <- ll$bic
+  score = dp_ll(dp_data, 20)
+  ll[[i]] <- score$ll
+  bic[[i]] <- score$bic
   
 }
 
 labs <- sapply(parents, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
 
+par(mfrow = c(3,1))
 
-plot(1:length(parents), score, pch=19, xaxt="n",
+plot(1:length(parents), ll, pch=19, xaxt="n",
+     xlab="Parent set", ylab="LL")
+axis(1, seq_len(length(parents)), labels=labs, las=2)
+
+plot(1:length(parents), bic, pch=19, xaxt="n",
      xlab="Parent set", ylab="BIC")
 axis(1, seq_len(length(parents)), labels=labs, las=2)
 
-
-post <- -0.5 * unlist(score)
+post <- -0.5 * unlist(bic)
 p <- exp(post - logSumExp(post))
 plot(1:length(parents), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
