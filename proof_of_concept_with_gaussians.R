@@ -121,22 +121,81 @@ dp_ll_v1 = function(dat, n_iter){
 
 
 #---------------------- new functions ----------------------------------
-dp_ll = function(dp_data, x, pax, mu, Sigma, data_scatter, data_sum){
+dp_ll = function(dp_data, x, pax, K, pis, mus, Sigmas, data_scatter, data_sum){
+  n <- nrow(dp_data)
   
+  vars <- c(x, pax)
+  pos  <- match(vars, colnames(dp_data))
+  child_parent_data  = dp_data[,pos]
+  child_parent_scatter = data_scatter[pos,pos, drop=FALSE]
+  child_parent_sum = data_sum[pos]
+  
+  ll = 0
+  for (k in 1:K) {
+    # cluster params
+    mu_k = mus[, , k]
+    child_parent_mu = mu_k[pos]
+    Sigma_k = Sigmas[, , k]
+    child_parent_Sigma = Sigma_k[pos,pos]
+    
+    # compute conditioanl ll for cluster k
+    ll_cond = loglik_cond_component_dp(n=n,
+                                        mu=child_parent_mu,
+                                        Sigma=child_parent_Sigma,
+                                        data_scatter=child_parent_scatter,
+                                        data_sum=child_parent_sum)
+    ll <-  ll + log(pis[k]) + ll_cond
+  }
+  
+  # define bic
+  d <- length(vars)             
+  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
+  bic <- -2 * ll + p * log(n)
+  
+  list(ll = ll, bic = bic)
 }
-loglik_cond_dp = function(dp_data, mu, Sigma, data_scatter, data_sum){
+loglik_cond_component_dp = function(n, mu, Sigma, data_scatter, data_sum){
+  mu_y <- mu[1]
+  mu_x <- mu[-1]
   
+  S_yy <- Sigma[1,1]
+  S_yx <- Sigma[1,-1, drop=FALSE]   
+  S_xx <- Sigma[-1,-1, drop=FALSE] 
+  
+  # quadratic part of the trace
+  C = data_scatter - data_sum %*% t(mu) - mu %*% t(data_sum) + n* mu %*% t(mu)
+  C_yy <- C[1,1]
+  C_yx <- C[1,-1, drop=FALSE]    
+  C_xx <- C[-1,-1, drop=FALSE] 
+  
+  # v = Syy - Syx Sxx^-1 Sxy
+  L = t(base::chol(S_xx))
+  w <- forwardsolve(L, t(S_yx))
+  u <- backsolve(t(L), w)
+  v = as.numeric(S_yy - S_yx %*% u)
+  
+  # sscss = Syx Sxx^-1 Cxx Sxx^-1 Sxy
+  css <- C_xx %*% u  
+  w <- forwardsolve(L, css)
+  u <- backsolve(t(L), w)
+  sscss = as.numeric(S_yx %*% u)
+  
+  # ssc = Syx Sxx^−1 Cxy
+  w <- forwardsolve(L, t(C_yx))
+  u <- backsolve(t(L), w)
+  ssc = as.numeric(S_yx %*% u)
+  
+  # conditional quadratic term q
+  q = (C_yy - 2*ssc + sscss)/v
+  
+  -(n/2)*log(2*base::pi*v) - (1/2)*q
 }
 #---------------------- new functions ----------------------------------
-
-ll = list()
-bic = list()
-
 child = "x5"
 parents <- list(
   #c(),
-  #c("x1"),
-  #c("x2"),
+  c("x1"),
+  c("x2"),
   c("x1","x2"),
   c("x1","x2","x3"),
   c("x1","x2","x4"),
@@ -149,8 +208,8 @@ n_iter = 200
 
 dp <- DirichletProcessMvnormal(dp_data)
 dp <- Fit(dp, n_iter)
-pis    <- dp$weights  
-K <- dp$numberClusters                
+pis <- dp$weights  
+K <- length(pis)                
 mus    <- dp$clusterParameters$mu         
 Sigmas <- dp$clusterParameters$sig  
 
@@ -159,102 +218,21 @@ data_scatter = crossprod(dp_data)
 data_sum = colSums(dp_data)
 
 
-# TODO  in loop
-pax = c("x1","x2")
 
 
-
-
-# TODO 
-#score = dp_ll(dp_data, x=child, pax, mus, Sigmas, data_scatter, data_sum)
-# TODO remove
-x = child
-#----
-
-vars <- c(x, pax)
-pos  <- match(vars, colnames(dp_data))
-child_parent_data  = dp_data[,pos]
-child_parent_scatter = data_scatter[pos,pos]
-child_parent_sum = data_sum[pos]
-
-#TODO 
-#for (k in 1:K) {}
-k=1
-
-pi = pis[k]
-mu = mus[, , k]
-child_parent_mu = mu[pos]
-Sigma = Sigmas[, , k]
-child_parent_Sigma = Sigma[pos,pos]
-
-# TODO
-ll = loglik_cond_dp(data=child_parent_data,
-                    mu=child_parent_mu,
-                    Sigma=child_parent_Sigma,
-                    data_scatter=child_parent_scatter,
-                    data_sum=child_parent_sum)
-
-#TODO rmeove
-data=child_parent_data
-mu=child_parent_mu
-Sigma=child_parent_Sigma
-data_scatter=child_parent_scatter
-data_sum=child_parent_sum
-#-----
-
-
-
-
-
-
-
-# define bic
-n <- nrow(dat)
-d <- ncol(dat)              
-K <- dp$numberClusters        
-p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
-bic <- -2 * ll + p * log(n)
-
-list(ll = ll, bic = bic)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ll = list()
+bic = list()
 for(i in 1:length(parents)){
   pax = parents[[i]]
   
   
   # loglikelihood
-  score = dp_ll(dp_data, 20)
+  score = dp_ll(dp_data, child, pax, K, pis, mus, Sigmas, data_scatter, data_sum)
   ll[[i]] <- score$ll
   bic[[i]] <- score$bic
   
 }
+
 
 labs <- sapply(parents, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
 
