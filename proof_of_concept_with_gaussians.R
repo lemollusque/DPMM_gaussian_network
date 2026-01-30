@@ -13,6 +13,8 @@ library(bridgesampling)
 library(ggplot2)
 
 set.seed(101)
+
+# data
 N <- 100  # number of samples
 
 x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
@@ -23,7 +25,9 @@ x5 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 
 data <- data.frame(x1, x2, x3, x4, x5)
 
-loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
+
+#---------------------- old functions ----------------------------------
+loglik_cond_component_dp_v1 <- function(dp_data, mu, Sigma) { 
   y <- dp_data[,1] #child node is in the first column
   X <- as.matrix(dp_data[,-1, drop=FALSE]) #parents
   
@@ -52,21 +56,21 @@ loglik_cond_component_dp <- function(dp_data, mu, Sigma) {
 }
 
 
-loglik_cond_dp <- function(dp_data, pis, mus, Sigmas) {
+loglik_cond_dp_v1 <- function(dp_data, pis, mus, Sigmas) {
   n <- nrow(dp_data)
   K <- length(pis)
   
   #entry (i,k) = log pi_k + log p_k(y_i | x_i)
   ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
   for (k in 1:K) {
-    ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp(dp_data, mus[, , k], Sigmas[, , k])
+    ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp_v1(dp_data, mus[, , k], Sigmas[, , k])
   }
   # total log-likelihood
   m <- apply(ll_mat, 1, max)
   sum(m + log(rowSums(exp(ll_mat - m))))
 }
 
-loglik_dp <- function(dp_data, pis, mus, Sigmas) {
+loglik_dp_v1 <- function(dp_data, pis, mus, Sigmas) {
   n <- nrow(dp_data)
   K <- length(pis)
   
@@ -80,7 +84,7 @@ loglik_dp <- function(dp_data, pis, mus, Sigmas) {
   sum(m + log(rowSums(exp(ll_mat - m))))
 }
 
-dp_ll = function(dat, n_iter){
+dp_ll_v1 = function(dat, n_iter){
   #first column = child node
   #remaining columns = parents
   if (ncol(dat)<2){
@@ -91,7 +95,7 @@ dp_ll = function(dat, n_iter){
     pis    <- dp$weights                     
     mus    <- dp$clusterParameters[[1]]         
     Sigmas <- dp$clusterParameters[[2]]  
-    ll = loglik_dp(dat, pis, mus, Sigmas)
+    ll = loglik_dp_v1(dat, pis, mus, Sigmas)
   }
   else{
     # Fit multivariate normal
@@ -101,7 +105,7 @@ dp_ll = function(dat, n_iter){
     pis    <- dp$weights                     
     mus    <- dp$clusterParameters$mu         
     Sigmas <- dp$clusterParameters$sig   
-    ll = loglik_cond_dp(dat, pis, mus, Sigmas)
+    ll = loglik_cond_dp_v1(dat, pis, mus, Sigmas)
   }
   # define bic
   n <- nrow(dat)
@@ -113,7 +117,7 @@ dp_ll = function(dat, n_iter){
   list(ll = ll, bic = bic)
   
 }
-
+#---------------------- old functions ----------------------------------
 
 
 ll = list()
@@ -135,7 +139,7 @@ for(i in 1:length(parents)){
   
   
   # loglikelihood
-  score = dp_ll(dp_data, 20)
+  score = dp_ll_v1(dp_data, 20)
   ll[[i]] <- score$ll
   bic[[i]] <- score$bic
   
