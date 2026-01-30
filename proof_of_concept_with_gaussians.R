@@ -88,6 +88,7 @@ dp_ll_v1 = function(dat, n_iter){
   #first column = child node
   #remaining columns = parents
   if (ncol(dat)<2){
+    set.seed(101)
     # fit gaussian DP
     dp <- DirichletProcessGaussian(dat)
     dp <- Fit(dp, n_iter)
@@ -98,6 +99,7 @@ dp_ll_v1 = function(dat, n_iter){
     ll = loglik_dp_v1(dat, pis, mus, Sigmas)
   }
   else{
+    set.seed(101)
     # Fit multivariate normal
     dp <- DirichletProcessMvnormal(dat)
     dp <- Fit(dp, n_iter)
@@ -121,16 +123,22 @@ dp_ll_v1 = function(dat, n_iter){
 
 
 #---------------------- new functions ----------------------------------
-dp_ll = function(dp_data, x, pax, K, pis, mus, Sigmas, data_scatter, data_sum){
+dp_ll = function(dp, child, pax){ 
+  dp_data =dp$data
+  pis <- dp$weights  
+  K <- length(pis)                
+  mus    <- dp$clusterParameters$mu         
+  Sigmas <- dp$clusterParameters$sig  
+  
+  
+  
   n <- nrow(dp_data)
-  
-  vars <- c(x, pax)
+  vars <- c(child, pax)
   pos  <- match(vars, colnames(dp_data))
-  child_parent_data  = dp_data[,pos]
-  child_parent_scatter = data_scatter[pos,pos, drop=FALSE]
-  child_parent_sum = data_sum[pos]
   
+  # initiate ll
   ll = 0
+   
   for (k in 1:K) {
     # cluster params
     mu_k = mus[, , k]
@@ -138,13 +146,25 @@ dp_ll = function(dp_data, x, pax, K, pis, mus, Sigmas, data_scatter, data_sum){
     Sigma_k = Sigmas[, , k]
     child_parent_Sigma = Sigma_k[pos,pos]
     
-    # compute conditioanl ll for cluster k
-    ll_cond = loglik_cond_component_dp(n=n,
+    # data in cluster k
+    data_k = dp_data[dp$clusterLabels == k,, drop=FALSE]
+    n_k <- nrow(data_k)
+    
+    ## data scatter 
+    data_scatter = crossprod(data_k)
+    data_sum = colSums(data_k)
+    child_parent_data  = data_k[,pos]
+    child_parent_scatter = data_scatter[pos,pos, drop=FALSE]
+    child_parent_sum = data_sum[pos]
+    
+    # compute conditioanl complete-data ll for cluster k
+    ll_cond = loglik_cond_component_dp(n=n_k,
                                         mu=child_parent_mu,
                                         Sigma=child_parent_Sigma,
                                         data_scatter=child_parent_scatter,
                                         data_sum=child_parent_sum)
-    ll <-  ll + log(pis[k]) + ll_cond
+    ll <- ll + n_k * log(pis[k]) + ll_cond
+    
   }
   
   # define bic
@@ -201,36 +221,30 @@ parents <- list(
   c("x1","x2","x4"),
   c("x1","x2","x3","x4")
 )
-possible_parents= sort(unique(unlist(parents)))
-# perform DPMM on all parents
-dp_data = scale(data[,c(child, possible_parents)]) 
-n_iter = 200
-
-dp <- DirichletProcessMvnormal(dp_data)
-dp <- Fit(dp, n_iter)
-pis <- dp$weights  
-K <- length(pis)                
-mus    <- dp$clusterParameters$mu         
-Sigmas <- dp$clusterParameters$sig  
-
-# scatter matrix
-data_scatter = crossprod(dp_data)
-data_sum = colSums(dp_data)
-
-
 
 
 ll = list()
 bic = list()
+ll_old = list()
+bic_old = list()
 for(i in 1:length(parents)){
+  set.seed(101)
   pax = parents[[i]]
   
+  dp_data = scale(data[,c(child, pax)]) 
+  n_iter = 50
+  
+  dp <- DirichletProcessMvnormal(dp_data)
+  dp <- Fit(dp, n_iter)
   
   # loglikelihood
-  score = dp_ll(dp_data, child, pax, K, pis, mus, Sigmas, data_scatter, data_sum)
+  score = dp_ll(dp, child, pax)
   ll[[i]] <- score$ll
   bic[[i]] <- score$bic
   
+  score_old = dp_ll_v1(dp_data, n_iter)
+  ll_old[[i]] <- score_old$ll
+  bic_old[[i]] <- score_old$bic
 }
 
 
@@ -247,6 +261,22 @@ plot(1:length(parents), bic, pch=19, xaxt="n",
 axis(1, seq_len(length(parents)), labels=labs, las=2)
 
 post <- -0.5 * unlist(bic)
+p <- exp(post - logSumExp(post))
+plot(1:length(parents), p, pch=19, xaxt="n",
+     xlab="Parent set", ylab="softmax")
+axis(1, seq_len(length(parents)), labels=labs, las=2)
+
+
+# old
+plot(1:length(parents), ll_old, pch=19, xaxt="n",
+     xlab="Parent set", ylab="LL")
+axis(1, seq_len(length(parents)), labels=labs, las=2)
+
+plot(1:length(parents), bic_old, pch=19, xaxt="n",
+     xlab="Parent set", ylab="BIC")
+axis(1, seq_len(length(parents)), labels=labs, las=2)
+
+post <- -0.5 * unlist(bic_old)
 p <- exp(post - logSumExp(post))
 plot(1:length(parents), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
