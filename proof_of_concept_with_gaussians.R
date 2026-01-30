@@ -117,29 +117,140 @@ dp_ll_v1 = function(dat, n_iter){
   list(ll = ll, bic = bic)
   
 }
-#---------------------- old functions ----------------------------------
+#---------------------- end old functions ----------------------------------
 
+
+#---------------------- new functions ----------------------------------
+dp_ll = function(dp_data, x, pax, mu, Sigma, data_scatter, data_sum){
+  
+}
+loglik_cond_dp = function(dp_data, mu, Sigma, data_scatter, data_sum){
+  
+}
+#---------------------- new functions ----------------------------------
 
 ll = list()
 bic = list()
 
+child = "x5"
 parents <- list(
-  c(),
-  c("x1"),
-  c("x2"),
+  #c(),
+  #c("x1"),
+  #c("x2"),
   c("x1","x2"),
   c("x1","x2","x3"),
   c("x1","x2","x4"),
   c("x1","x2","x3","x4")
 )
+possible_parents= sort(unique(unlist(parents)))
+# perform DPMM on all parents
+dp_data = scale(data[,c(child, possible_parents)]) 
+n_iter = 200
+
+dp <- DirichletProcessMvnormal(dp_data)
+dp <- Fit(dp, n_iter)
+pis    <- dp$weights  
+K <- dp$numberClusters                
+mus    <- dp$clusterParameters$mu         
+Sigmas <- dp$clusterParameters$sig  
+
+# scatter matrix
+data_scatter = crossprod(dp_data)
+data_sum = colSums(dp_data)
+
+
+# TODO  in loop
+pax = c("x1","x2")
+
+
+
+
+# TODO 
+#score = dp_ll(dp_data, x=child, pax, mus, Sigmas, data_scatter, data_sum)
+# TODO remove
+x = child
+#----
+
+vars <- c(x, pax)
+pos  <- match(vars, colnames(dp_data))
+child_parent_data  = dp_data[,pos]
+child_parent_scatter = data_scatter[pos,pos]
+child_parent_sum = data_sum[pos]
+
+#TODO 
+#for (k in 1:K) {}
+k=1
+
+pi = pis[k]
+mu = mus[, , k]
+child_parent_mu = mu[pos]
+Sigma = Sigmas[, , k]
+child_parent_Sigma = Sigma[pos,pos]
+
+# TODO
+ll = loglik_cond_dp(data=child_parent_data,
+                    mu=child_parent_mu,
+                    Sigma=child_parent_Sigma,
+                    data_scatter=child_parent_scatter,
+                    data_sum=child_parent_sum)
+
+#TODO rmeove
+data=child_parent_data
+mu=child_parent_mu
+Sigma=child_parent_Sigma
+data_scatter=child_parent_scatter
+data_sum=child_parent_sum
+#-----
+
+
+
+
+
+
+
+# define bic
+n <- nrow(dat)
+d <- ncol(dat)              
+K <- dp$numberClusters        
+p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
+bic <- -2 * ll + p * log(n)
+
+list(ll = ll, bic = bic)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 for(i in 1:length(parents)){
-  set.seed(101)
   pax = parents[[i]]
-  dp_data = scale(data[ ,c("x5" , pax)]) 
   
   
   # loglikelihood
-  score = dp_ll_v1(dp_data, 20)
+  score = dp_ll(dp_data, 20)
   ll[[i]] <- score$ll
   bic[[i]] <- score$bic
   
