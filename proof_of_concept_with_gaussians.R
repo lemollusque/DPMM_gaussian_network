@@ -161,9 +161,9 @@ loglik_cond_component_dp = function(n, mu, Sigma, data_scatter, data_sum){
 }
 
 
-loglik_component_dp <- function(n, mu, Sigma, data_scatter, data_sum){#(n, sumy, sumy2, mu, sig2) {
-  c <- data_scatter - 2*mu*data_sum + n*mu^2
-  -(n/2)*log(2*base::pi*Sigma) - 0.5*c/Sigma
+loglik_component_dp <- function(n, mu, Sigma, data_scatter, data_sum){
+  C <- data_scatter - 2*mu*data_sum + n*mu^2
+  -(n/2)*log(2*base::pi*Sigma) - 0.5*C/Sigma
 }
 
 
@@ -188,7 +188,7 @@ dp_ll = function(dp, child, pax){
     mu_k = mus[, , k]
     child_parent_mu = mu_k[pos]
     Sigma_k = Sigmas[, , k]
-    child_parent_Sigma = Sigma_k[pos,pos]
+    child_parent_Sigma = Sigma_k[pos,pos, drop=FALSE]
     
     # data in cluster k
     data_k = dp_data[dp$clusterLabels == k,, drop=FALSE]
@@ -197,7 +197,6 @@ dp_ll = function(dp, child, pax){
     ## data scatter 
     data_scatter = crossprod(data_k)
     data_sum = colSums(data_k)
-    child_parent_data  = data_k[,pos]
     child_parent_scatter = data_scatter[pos,pos, drop=FALSE]
     child_parent_sum = data_sum[pos]
     
