@@ -220,7 +220,7 @@ dp_ll = function(dp, child, pax){
     }
   }
   
-  # define bic
+  # define BIC
   d <- length(vars)             
   p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
   bic <- -2 * ll + p * log(n)
@@ -228,10 +228,9 @@ dp_ll = function(dp, child, pax){
   list(ll = ll, bic = bic)
 }
 
-#---------------------- new functions ----------------------------------
-
+#---------------------- end new functions ----------------------------------
 child = "x5"
-parents <- list(
+parents_list <- list(
   c(),
   c("x1"),
   c("x2"),
@@ -240,7 +239,7 @@ parents <- list(
   c("x1","x2","x4"),
   c("x1","x2","x3","x4")
 )
-possible_parents= sort(unique(unlist(parents)))
+possible_parents= sort(unique(unlist(parents_list)))
 # perform DPMM on all parents
 dp_data = scale(data[,c(child, possible_parents)]) 
 n_iter = 200
@@ -251,8 +250,8 @@ ll = list()
 bic = list()
 ll_old = list()
 bic_old = list()
-for(i in 1:length(parents)){
-  pax = parents[[i]]
+for(i in 1:length(parents_list)){
+  pax = parents_list[[i]]
   
   # loglikelihood
   score = dp_ll(dp, child, pax)
@@ -260,32 +259,35 @@ for(i in 1:length(parents)){
   bic[[i]] <- score$bic
 }
 
-
-labs <- sapply(parents, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
+# plot results
+labs <- sapply(parents_list, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
 
 par(mfrow = c(3,1))
 
-plot(1:length(parents), ll, pch=19, xaxt="n",
+plot(1:length(parents_list), ll, pch=19, xaxt="n",
      xlab="Parent set", ylab="LL")
-axis(1, seq_len(length(parents)), labels=labs, las=2)
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
 
-plot(1:length(parents), bic, pch=19, xaxt="n",
+plot(1:length(parents_list), bic, pch=19, xaxt="n",
      xlab="Parent set", ylab="BIC")
-axis(1, seq_len(length(parents)), labels=labs, las=2)
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
 
 post <- -0.5 * unlist(bic)
 p <- exp(post - logSumExp(post))
-plot(1:length(parents), p, pch=19, xaxt="n",
+plot(1:length(parents_list), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
-axis(1, seq_len(length(parents)), labels=labs, las=2)
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+
 
 ########################### fit dps and then average ##################
+
+#---------------------------- avg dp functions ----------------------------
 add_dp <- function(dp_list, dp, child, parents) {
   dp_list[[length(dp_list) + 1]] <- list(
     dp = dp,
     child = child,
     parents = parents,
-    vars = c(child, parents)  # handy
+    vars = c(child, parents) 
   )
   dp_list
 }
@@ -325,23 +327,17 @@ average_dp_ll = function(dp_list, child, pax){
   mean(unlist(avg_ll))
 }
 
+#---------------------------- end avg dp functions ----------------------------
 dp_list <- list()
 vars  <- c("x1","x2","x3","x4","x5")
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 20
+  n_iter = 200
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
 }
-
-# scoring
-child = "x5"
-pax = c("x1", "x2")
-hits <- find_dps(dp_list, child, pax)
-length(hits)
-average_dp_ll(dp_list, child, pax)
 
 parents_list <- list(
   c(),
@@ -358,16 +354,22 @@ for(i in 1:length(parents_list)){
   pax = parents_list[[i]]
   
   hits <- find_dps(dp_list, child, pax)
-  length(hits)
+  
   # bic
-  avg_score[[i]] = average_dp_ll(dp_list, child, pax)
+  avg_score[[i]] = average_dp_ll(hits, child, pax)
 }
 
-
+# plot avg BIC
 labs <- sapply(parents_list, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
-par(mfrow = c(1,1))
+par(mfrow = c(2,1))
 
 plot(1:length(parents_list), avg_score, pch=19, xaxt="n",
-     xlab="Parent set", ylab="LL")
+     xlab="Parent set", ylab="AVG BIC")
 axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+
+post <- -0.5 * unlist(avg_score)
+p <- exp(post - logSumExp(post))
+plot(1:length(parents_list), p, pch=19, xaxt="n",
+     xlab="Parent set", ylab="softmax")
 axis(1, seq_len(length(parents_list)), labels=labs, las=2)
