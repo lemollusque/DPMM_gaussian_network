@@ -227,7 +227,9 @@ dp_ll = function(dp, child, pax){
   
   list(ll = ll, bic = bic)
 }
+
 #---------------------- new functions ----------------------------------
+
 child = "x5"
 parents <- list(
   c(),
@@ -276,3 +278,96 @@ p <- exp(post - logSumExp(post))
 plot(1:length(parents), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
 axis(1, seq_len(length(parents)), labels=labs, las=2)
+
+########################### fit dps and then average ##################
+add_dp <- function(dp_list, dp, child, parents) {
+  dp_list[[length(dp_list) + 1]] <- list(
+    dp = dp,
+    child = child,
+    parents = parents,
+    vars = c(child, parents)  # handy
+  )
+  dp_list
+}
+
+find_dps <- function(dp_list, child, parents) {
+  needed <- c(child, parents)
+  Filter(function(e) all(needed %in% e$vars), dp_list)
+}
+
+average_dp_ll = function(dp_list, child, pax){ 
+  avg_ll = list()
+  idx = 1
+  for (i in 1:length(dp_list)){
+    dp = dp_list[[i]]$dp
+    
+    vars = dp_list[[i]]$vars
+    required <- unique(c(child, pax))
+    others <- setdiff(vars, required)
+    
+    # choose any subset of the remaining vars
+    for (k in 0:length(others)) {
+      if (k == 0) {
+        # loglikelihood
+        score = dp_ll(dp, child, pax)
+        avg_ll[[idx]] <- score$bic
+        idx <- idx + 1
+      } else {
+        cmb <- combn(others, k, simplify = FALSE)
+        for (s in cmb) {
+          score = dp_ll(dp, child, c(pax, s))
+          avg_ll[[idx]] <- score$bic
+          idx <- idx + 1
+        }
+      }
+    }
+  }
+  mean(unlist(avg_ll))
+}
+
+dp_list <- list()
+vars  <- c("x1","x2","x3","x4","x5")
+for (child in vars){
+  parents <- vars[vars != child]
+  dp_data = scale(data[,c(child, parents)]) 
+  n_iter = 20
+  dp <- DirichletProcessMvnormal(dp_data)
+  dp <- Fit(dp, n_iter)
+  dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
+}
+
+# scoring
+child = "x5"
+pax = c("x1", "x2")
+hits <- find_dps(dp_list, child, pax)
+length(hits)
+average_dp_ll(dp_list, child, pax)
+
+parents_list <- list(
+  c(),
+  c("x1"),
+  c("x2"),
+  c("x1","x2"),
+  c("x1","x2","x3"),
+  c("x1","x2","x4"),
+  c("x1","x2","x3","x4")
+)
+
+avg_score <- list()
+for(i in 1:length(parents_list)){
+  pax = parents_list[[i]]
+  
+  hits <- find_dps(dp_list, child, pax)
+  length(hits)
+  # bic
+  avg_score[[i]] = average_dp_ll(dp_list, child, pax)
+}
+
+
+labs <- sapply(parents_list, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
+par(mfrow = c(1,1))
+
+plot(1:length(parents_list), avg_score, pch=19, xaxt="n",
+     xlab="Parent set", ylab="LL")
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
