@@ -55,69 +55,48 @@ loglik_cond_component_dp_v1 <- function(dp_data, mu, Sigma) {
   dnorm(y, mean = mu_cond, sd = sqrt(S_cond), log = TRUE)
 }
 
-
-loglik_cond_dp_v1 <- function(dp_data, pis, mus, Sigmas) {
-  n <- nrow(dp_data)
-  K <- length(pis)
+dp_ll_v1 = function(dp, child, pax){ 
+  dp_data=dp$data
+  pis <- dp$weights  
+  K <- length(pis)                
+  mus    <- dp$clusterParameters$mu         
+  Sigmas <- dp$clusterParameters$sig  
   
-  #entry (i,k) = log pi_k + log p_k(y_i | x_i)
+  
+  
+  n <- nrow(dp_data)
+  vars <- c(child, pax)
+  d <- length(vars)    
+  pos  <- match(vars, colnames(dp_data))
+  child_parent_data = dp_data[,pos]
+  
+  # initiate ll
   ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
   for (k in 1:K) {
-    ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp_v1(dp_data, mus[, , k], Sigmas[, , k])
-  }
-  # total log-likelihood
-  m <- apply(ll_mat, 1, max)
-  sum(m + log(rowSums(exp(ll_mat - m))))
-}
-
-loglik_dp_v1 <- function(dp_data, pis, mus, Sigmas) {
-  n <- nrow(dp_data)
-  K <- length(pis)
-  
-  #entry (i,k) = log pi_k + log p_k(y_i | x_i)
-  ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
-  for (k in 1:K) {
-    ll_mat[, k] <- log(pis[k]) + dnorm(dp_data, mean = mus[, , k], sd = sqrt(Sigmas[, , k]), log = TRUE)
-  }
-  # total log-likelihood
-  m <- apply(ll_mat, 1, max)
-  sum(m + log(rowSums(exp(ll_mat - m))))
-}
-
-dp_ll_v1 = function(dat, n_iter){
-  #first column = child node
-  #remaining columns = parents
-  if (ncol(dat)<2){
-    set.seed(101)
-    # fit gaussian DP
-    dp <- DirichletProcessGaussian(dat)
-    dp <- Fit(dp, n_iter)
+    # cluster params
+    mu_k = mus[, , k]
+    child_parent_mu = mu_k[pos]
+    Sigma_k = Sigmas[, , k]
+    child_parent_Sigma = Sigma_k[pos,pos, drop=FALSE]
     
-    pis    <- dp$weights                     
-    mus    <- dp$clusterParameters[[1]]         
-    Sigmas <- dp$clusterParameters[[2]]  
-    ll = loglik_dp_v1(dat, pis, mus, Sigmas)
-  }
-  else{
-    set.seed(101)
-    # Fit multivariate normal
-    dp <- DirichletProcessMvnormal(dat)
-    dp <- Fit(dp, n_iter)
+    if (length(pax) < 1){
+      ll_mat[, k] <- log(pis[k]) + dnorm(child_parent_data, mean = child_parent_mu, sd = sqrt(child_parent_Sigma), log = TRUE)
+    }
+    else{
+      
+      ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp_v1(child_parent_data, child_parent_mu, child_parent_Sigma)
+      
+    }
     
-    pis    <- dp$weights                     
-    mus    <- dp$clusterParameters$mu         
-    Sigmas <- dp$clusterParameters$sig   
-    ll = loglik_cond_dp_v1(dat, pis, mus, Sigmas)
+    # total log-likelihood
+    m <- apply(ll_mat, 1, max)
+    ll = sum(m + log(rowSums(exp(ll_mat - m))))
   }
-  # define bic
-  n <- nrow(dat)
-  d <- ncol(dat)              
-  K <- dp$numberClusters        
+  # define bic         
   p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
   bic <- -2 * ll + p * log(n)
   
   list(ll = ll, bic = bic)
-  
 }
 #---------------------- end old functions ----------------------------------
 
@@ -191,7 +170,7 @@ dp_ll = function(dp, child, pax){
     child_parent_Sigma = Sigma_k[pos,pos, drop=FALSE]
     
     # data in cluster k
-    data_k = dp_data[dp$clusterLabels == k,, drop=FALSE]
+    data_k = dp_data
     n_k <- nrow(data_k)
     
     ## data scatter 
@@ -252,6 +231,12 @@ ll_old = list()
 bic_old = list()
 for(i in 1:length(parents_list)){
   pax = parents_list[[i]]
+  
+  # loglikelihood
+  score = dp_ll_v1(dp, child, pax)
+  ll_old[[i]] <- score$ll
+  bic_old[[i]] <- score$bic
+  
   
   # loglikelihood
   score = dp_ll(dp, child, pax)
