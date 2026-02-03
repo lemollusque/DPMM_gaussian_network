@@ -27,54 +27,37 @@ truegraph <- 1*(trueDAG != 0)
 data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
 
 
-
-#---------------------- new functions ----------------------------------
-loglik_cond_component_dp = function(n, mu, Sigma, data_scatter, data_sum){
+#---------------------- functions ----------------------------------
+loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
+  y <- dp_data[,1] #child node is in the first column
+  X <- as.matrix(dp_data[,-1, drop=FALSE]) #parents
+  
   mu_y <- mu[1]
   mu_x <- mu[-1]
   
   S_yy <- Sigma[1,1]
-  S_yx <- Sigma[1,-1, drop=FALSE]   
+  S_yx <- Sigma[1,-1, drop=FALSE]  
+  S_xy <- Sigma[-1,1, drop=FALSE]   
   S_xx <- Sigma[-1,-1, drop=FALSE] 
   
-  # quadratic part of the trace
-  C = data_scatter - data_sum %*% t(mu) - mu %*% t(data_sum) + n* mu %*% t(mu)
-  C_yy <- C[1,1]
-  C_yx <- C[1,-1, drop=FALSE]    
-  C_xx <- C[-1,-1, drop=FALSE] 
-  
-  # v = Syy - Syx Sxx^-1 Sxy
+  # Cholesky of S_xx 
   L = t(base::chol(S_xx))
-  w <- forwardsolve(L, t(S_yx))
-  u <- backsolve(t(L), w)
-  v = as.numeric(S_yy - S_yx %*% u)
   
-  # sscss = Syx Sxx^-1 Cxx Sxx^-1 Sxy
-  css <- C_xx %*% u  
-  w <- forwardsolve(L, css)
-  u <- backsolve(t(L), w)
-  sscss = as.numeric(S_yx %*% u)
+  #conditional distr (mu and Sigma)
+  w <- forwardsolve(L, t(X) - mu_x)
+  z = backsolve(t(L), w)
+  mu_cond = drop(mu_y + S_yx %*% z)
   
-  # ssc = Syx Sxx^−1 Cxy
-  w <- forwardsolve(L, t(C_yx))
-  u <- backsolve(t(L), w)
-  ssc = as.numeric(S_yx %*% u)
+  W <- forwardsolve(L, S_xy)
+  Z = backsolve(t(L), W)
+  S_cond = S_yy - as.numeric(S_yx %*% Z)
   
-  # conditional quadratic term q
-  q = (C_yy - 2*ssc + sscss)/v
-  
-  -(n/2)*log(2*base::pi*v) - (1/2)*q
+  # log density
+  dnorm(y, mean = mu_cond, sd = sqrt(S_cond), log = TRUE)
 }
-
-
-loglik_component_dp <- function(n, mu, Sigma, data_scatter, data_sum){
-  C <- data_scatter - 2*mu*data_sum + n*mu^2
-  -(n/2)*log(2*base::pi*Sigma) - 0.5*C/Sigma
-}
-
 
 dp_ll = function(dp, child, pax){ 
-  dp_data =dp$data
+  dp_data=dp$data
   pis <- dp$weights  
   K <- length(pis)                
   mus    <- dp$clusterParameters$mu         
@@ -84,11 +67,12 @@ dp_ll = function(dp, child, pax){
   
   n <- nrow(dp_data)
   vars <- c(child, pax)
+  d <- length(vars)    
   pos  <- match(vars, colnames(dp_data))
+  child_parent_data = dp_data[,pos]
   
   # initiate ll
-  ll = 0
-  
+  ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
   for (k in 1:K) {
     # cluster params
     mu_k = mus[, , k]
@@ -96,51 +80,32 @@ dp_ll = function(dp, child, pax){
     Sigma_k = Sigmas[, , k]
     child_parent_Sigma = Sigma_k[pos,pos, drop=FALSE]
     
-    # data in cluster k
-    data_k = dp_data[dp$clusterLabels == k,, drop=FALSE]
-    n_k <- nrow(data_k)
-    
-    ## data scatter 
-    data_scatter = crossprod(data_k)
-    data_sum = colSums(data_k)
-    child_parent_scatter = data_scatter[pos,pos, drop=FALSE]
-    child_parent_sum = data_sum[pos]
-    
     if (length(pax) < 1){
-      # compute complete-data ll for cluster k
-      ll_component = loglik_component_dp(n=n_k,
-                                         mu=child_parent_mu,
-                                         Sigma=child_parent_Sigma,
-                                         data_scatter=child_parent_scatter,
-                                         data_sum=child_parent_sum)
-      ll <- ll + n_k * log(pis[k]) + ll_component
+      ll_mat[, k] <- log(pis[k]) + dnorm(child_parent_data, mean = child_parent_mu, sd = sqrt(child_parent_Sigma), log = TRUE)
     }
     else{
-      # compute conditional complete-data ll for cluster k
-      ll_cond_component = loglik_cond_component_dp(n=n_k,
-                                                   mu=child_parent_mu,
-                                                   Sigma=child_parent_Sigma,
-                                                   data_scatter=child_parent_scatter,
-                                                   data_sum=child_parent_sum)
-      ll <- ll + n_k * log(pis[k]) + ll_cond_component
+      
+      ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp(child_parent_data, child_parent_mu, child_parent_Sigma)
+      
     }
+    
+    # total log-likelihood
+    m <- apply(ll_mat, 1, max)
+    ll = sum(m + log(rowSums(exp(ll_mat - m))))
   }
-  
-  # define bic
-  d <- length(vars)             
+  # define bic         
   p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
   bic <- -2 * ll + p * log(n)
   
   list(ll = ll, bic = bic)
 }
-
-#---------------------- new functions ----------------------------------
+#---------------------------- avg dp functions ----------------------------
 add_dp <- function(dp_list, dp, child, parents) {
   dp_list[[length(dp_list) + 1]] <- list(
     dp = dp,
     child = child,
     parents = parents,
-    vars = c(child, parents)  # handy
+    vars = c(child, parents) 
   )
   dp_list
 }
@@ -179,6 +144,7 @@ average_dp_ll = function(dp_list, child, pax){
   }
   mean(unlist(avg_ll))
 }
+#----------------------  functions ----------------------------------
 
 
 dp_list <- list()
