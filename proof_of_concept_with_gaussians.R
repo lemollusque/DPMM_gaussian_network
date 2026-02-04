@@ -150,6 +150,19 @@ average_dp_ll = function(dp_list, child, pax){
   -2 * log_mean_evid
   
 }
+
+scora_a_dag = function(adj_mat, dp_list){
+  vars = colnames(adj_mat)
+  local_score <- list()
+  for (child in vars){
+    pax = names(adj_mat[,child][which(adj_mat[,child] == 1)])
+    
+    hits <- find_dps(dp_list, child, pax)
+    
+    # bic
+    local_score[[i]] = average_dp_ll(hits, child, pax)
+  }
+  sum(unlist(local_score))
 }
 #----------------------  functions ----------------------------------
 
@@ -249,3 +262,38 @@ p <- exp(post - logSumExp(post))
 plot(1:length(parents_list), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
 axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+
+
+
+########################### score a DAG (check equivalence) ##################
+
+A_12 <- matrix(c(
+  0, 1, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0
+), nrow = 5, byrow = TRUE,
+dimnames = list(vars, vars))
+
+A_21 <- matrix(c(
+  0, 0, 0, 0, 0,
+  1, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0
+), nrow = 5, byrow = TRUE,
+dimnames = list(vars, vars))
+
+A_125 <- matrix(c(
+  0, 1, 0, 0, 1,
+  0, 0, 0, 0, 1,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0
+), nrow = 5, byrow = TRUE,
+dimnames = list(vars, vars))
+
+scora_a_dag(A_12, dp_list)
+scora_a_dag(A_21, dp_list)
+scora_a_dag(A_125, dp_list)
