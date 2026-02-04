@@ -26,6 +26,9 @@ trueDAG <- as(myDAG, "matrix")
 truegraph <- 1*(trueDAG != 0)
 data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
 
+vars  <- c("x1","x2","x3","x4")
+colnames(data) = vars
+
 
 #---------------------- functions ----------------------------------
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
@@ -142,7 +145,6 @@ average_dp_ll = function(dp_list, child, pax){
       }
     }
   }
-  #average in the real space
   bics = unlist(list_bic)
   log_evid <- -0.5 * bics
   
@@ -152,25 +154,64 @@ average_dp_ll = function(dp_list, child, pax){
   -2 * log_mean_evid
   
 }
+
+score_a_dag = function(adj_mat, dp_list){
+  vars = colnames(adj_mat)
+  local_scores <- numeric(length(vars))
+  names(local_scores) <- vars
+  for (child in vars){
+    pax = names(adj_mat[,child][which(adj_mat[,child] == 1)])
+    
+    hits <- find_dps(dp_list, child, pax)
+    
+    # bic
+    local_scores[child] = average_dp_ll(hits, child, pax)
+  }
+  sum(local_scores)
+}
+#----------------------  test functions ----------------------------------
+test_dag_score_equivalence <- function(dags, dp_list,
+                                       tol = 1e-4,
+                                       verbose = TRUE) {
+  if (is.null(names(dags)) || any(names(dags) == "")) {
+    names(dags) <- paste0("DAG_", seq_along(dags))
+  }
+  
+  # score all dags
+  scores <- unlist(lapply(dags, function(A) score_a_dag(A, dp_list)))
+  
+  # pairwise differences
+  diffs <- outer(scores, scores, FUN = "-")
+  
+  # pass/fail: all equal within tol?
+  all_equal <- max(abs(diffs)) < tol
+  
+  if (verbose) {
+    cat("Total scores:\n")
+    print(scores)
+    cat("\nMax |pairwise diff|:", max(abs(diffs)), "\n")
+    cat("All equal?", all_equal, "\n\n")
+  }
+  
+  all_equal
+}
 #----------------------  functions ----------------------------------
 
+# List all DAGs with n nodes
 
 dp_list <- list()
-vars  <- c("V1","V2","V3","V4")
-colnames(data) = vars
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 20
+  n_iter = 2000
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
 }
-
-##############################################################
 # List all DAGs with n nodes
 all.dags <- list()
-adj <- matrix(0, nrow = n, ncol = n)
+adj <- matrix(0, nrow = n, ncol = n,
+              dimnames=list(vars, vars))
 dag.counter <- 0
 all.comb <- rep(list(c(0,1)), n*(n-1))
 all.comb <- expand.grid(all.comb)  # all combinations outside of diagonal of adjacency matrix
@@ -184,45 +225,16 @@ for(i in 1:nrow(all.comb)) {
   }
 }
 
-# Compute true posterior (and save all scores)
-true.post <- rep(NA, dag.counter)
-parent.scores <- data.frame(sets = character(0), newscore = character(0))  
-parent.scores <- rep(list(parent.scores), n)
 
-for(k in 1:dag.counter) {
-  print(k)
-  dag <- all.dags[[k]]
-  curr_score <- 0
-  
-  for (x in 1:n) {
-    
-    child_name <- vars[x]
-    pax_names  <- vars[which(dag[, x] == 1)]   # parents of node x
-    
-    # cache key for this parent set (use names)
-    pax.str <- if (length(pax_names) == 0) "none" else paste(sort(pax_names), collapse=",")
-    
-    set <- parent.scores[[x]]$sets
-    
-    ind <- match(pax.str, set)
-    is_new <- is.na(ind)
-    
-    if (is_new) {
-      
-      hits <- find_dps(dp_list, child_name, pax_names)
-      loc_score <- average_dp_ll(hits, child_name, pax_names)
-      parent.scores[[x]][nrow(parent.scores[[x]]) + 1, ] <- c(pax.str, loc_score)
-    } else {
-      loc_score <- as.numeric(parent.scores[[x]]$newscore[ind])
-    }
-    
-    curr_score <- curr_score + loc_score
-  }
-  
-  true.post[k] <- curr_score
+scores <- rep(NA, dag.counter)
+for(d in 1:dag.counter) {
+  print(d)
+  dag <- all.dags[[d]]
+  scores[d] = score_a_dag(dag, dp_list)
 }
 
-true.p <- exp(-0.5*true.post - logSumExp(-0.5*true.post))
+
+true.p <- exp(-0.5*scores - logSumExp(-0.5*scores))
 
 
 #compute shd for every graph
@@ -236,10 +248,10 @@ for(k in 1:dag.counter) {
   count_edges[k] = sum(dag)
 }
 shd.order =  order(shd, decreasing = F) 
-a <- true.post[shd.order]
+a <- scores[shd.order]
 b <- true.p[shd.order]
 
 
 par(mfrow = c(2,1))
-plot(a, type="l")
-plot(b, type="l")
+plot(a, type="l", ylab="score")
+plot(b, type="l", ylab="softmax")

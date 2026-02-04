@@ -163,7 +163,7 @@ score_a_dag = function(adj_mat, dp_list){
     # bic
     local_scores[child] = average_dp_ll(hits, child, pax)
   }
-  sum(sum(local_scores))
+  sum(local_scores)
 }
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(dags, dp_list,
@@ -376,3 +376,87 @@ dags <- list(
 
 res <- test_dag_score_equivalence(dags, dp_list)
 res
+
+############################### compare all dags ##############################
+
+# data
+N <- 100  # number of samples
+n = 4
+vars  <- c("x1","x2","x3","x4")
+
+truegraph <- matrix(c(
+  0,0,0,1,
+  0,0,0,1,
+  0,0,0,0,
+  0,0,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
+x2 <- rnorm(N, mean=sample(1:10)[1], sd=1)
+x3 <- rnorm(N, mean=sample(1:10)[1], sd=1)
+x4 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
+
+data <- data.frame(x1, x2, x3, x4)
+
+dp_list <- list()
+for (child in vars){
+  parents <- vars[vars != child]
+  dp_data = scale(data[,c(child, parents)]) 
+  n_iter = 200
+  dp <- DirichletProcessMvnormal(dp_data)
+  dp <- Fit(dp, n_iter)
+  dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
+}
+# List all DAGs with n nodes
+all.dags <- list()
+adj <- matrix(0, nrow = n, ncol = n,
+              dimnames=list(vars, vars))
+dag.counter <- 0
+all.comb <- rep(list(c(0,1)), n*(n-1))
+all.comb <- expand.grid(all.comb)  # all combinations outside of diagonal of adjacency matrix
+
+for(i in 1:nrow(all.comb)) {
+  adj[col(adj)!=row(adj)] <- as.numeric(all.comb[i, ])
+  
+  if(is.DAG(adj)) {
+    dag.counter <- dag.counter + 1
+    all.dags[[dag.counter]] <- adj
+  }
+}
+
+
+scores <- rep(NA, dag.counter)
+for(d in 1:dag.counter) {
+  print(d)
+  dag <- all.dags[[d]]
+  scores[d] = score_a_dag(dag, dp_list)
+}
+true.p <- exp(-0.5*scores - logSumExp(-0.5*scores))
+
+
+#compute shd for every graph
+shd <- rep(NA, dag.counter)
+count_edges <- rep(NA, dag.counter)
+for(k in 1:dag.counter) {
+  print(k)
+  dag <- all.dags[[k]]
+  camparison = compareDAGs(dag, truegraph)
+  shd[k] = camparison["SHD"]
+  count_edges[k] = sum(dag)
+}
+shd.order =  order(shd, decreasing = F) 
+a <- scores[shd.order]
+b <- true.p[shd.order]
+
+
+par(mfrow = c(2,1))
+plot(a, type="l", ylab="score")
+plot(b, type="l", ylab="softmax")
+
+
+
+
+top5_idx <- order(scores, decreasing = FALSE)[1:5]
+top5_idx
+scores[top5_idx]
