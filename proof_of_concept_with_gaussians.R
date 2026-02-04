@@ -98,6 +98,40 @@ dp_ll = function(dp, child, pax){
   
   list(ll = ll, bic = bic)
 }
+
+cov_ll = function(dp_data, child, pax){   
+  n <- nrow(dp_data)
+  vars <- c(child, pax)
+  d <- length(vars)    
+  pos  <- match(vars, colnames(dp_data))
+  
+  mu    <- colMeans(dp_data)        
+  Sigma <- cov(dp_data) * (n - 1) / n
+  
+  child_parent_data = dp_data[,pos]
+  child_parent_mu = mu[pos]
+  child_parent_Sigma = Sigma[pos,pos, drop=FALSE]
+  
+  # initiate ll
+  ll_mat <- matrix(NA_real_, nrow = n, ncol = 1)
+  
+  if (length(pax) < 1){
+    ll_mat[, 1] <- dnorm(child_parent_data, mean = child_parent_mu, sd = sqrt(child_parent_Sigma), log = TRUE)
+  }
+  else{
+    ll_mat[, 1] <- loglik_cond_component_dp(child_parent_data, child_parent_mu, child_parent_Sigma)
+  }
+  
+  # total log-likelihood
+  m <- apply(ll_mat, 1, max)
+  ll = sum(m + log(rowSums(exp(ll_mat - m))))
+  
+  # define bic         
+  k_cond <- length(pax) + 2
+  bic <- -2 * ll + k_cond * log(n)
+  
+  list(ll = ll, bic = bic)
+}
 #---------------------------- avg dp functions ----------------------------
 add_dp <- function(dp_list, dp, child, parents) {
   dp_list[[length(dp_list) + 1]] <- list(
@@ -212,8 +246,6 @@ dp <- Fit(dp, n_iter)
 
 ll = list()
 bic = list()
-ll_old = list()
-bic_old = list()
 for(i in 1:length(parents_list)){
   pax = parents_list[[i]]
   
@@ -243,13 +275,47 @@ plot(1:length(parents_list), p, pch=19, xaxt="n",
 axis(1, seq_len(length(parents_list)), labels=labs, las=2)
 
 
+########################### with cov ##################
+
+ll = list()
+bic = list()
+for(i in 1:length(parents_list)){
+  pax = parents_list[[i]]
+  
+  # loglikelihood
+  score = cov_ll(dp_data, child, pax)
+  ll[[i]] <- score$ll
+  bic[[i]] <- score$bic
+}
+
+# plot results
+labs <- sapply(parents_list, function(p) if (length(p)==0) "none" else paste(p, collapse=","))
+
+par(mfrow = c(3,1))
+
+plot(1:length(parents_list), ll, pch=19, xaxt="n",
+     xlab="Parent set", ylab="LL")
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+
+plot(1:length(parents_list), bic, pch=19, xaxt="n",
+     xlab="Parent set", ylab="BIC")
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+
+post <- -0.5 * unlist(bic)
+p <- exp(post - logSumExp(post))
+plot(1:length(parents_list), p, pch=19, xaxt="n",
+     xlab="Parent set", ylab="softmax")
+axis(1, seq_len(length(parents_list)), labels=labs, las=2)
+
+
+
 ########################### fit dps and then average ##################
 dp_list <- list()
 vars  <- c("x1","x2","x3","x4","x5")
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 20
+  n_iter = 200
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
@@ -289,7 +355,6 @@ p <- exp(post - logSumExp(post))
 plot(1:length(parents_list), p, pch=19, xaxt="n",
      xlab="Parent set", ylab="softmax")
 axis(1, seq_len(length(parents_list)), labels=labs, las=2)
-
 
 
 ########################### score a DAG (check equivalence) ##################
