@@ -523,5 +523,4 @@ plot(b, type="l", ylab="softmax")
 
 
 top5_idx <- order(scores, decreasing = FALSE)[1:5]
-top5_idx
-scores[top5_idx]
+all.dags[top5_idx]
