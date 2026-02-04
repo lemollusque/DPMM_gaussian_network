@@ -116,7 +116,7 @@ find_dps <- function(dp_list, child, parents) {
 }
 
 average_dp_ll = function(dp_list, child, pax){ 
-  avg_ll = list()
+  list_bic = list()
   idx = 1
   for (i in 1:length(dp_list)){
     dp = dp_list[[i]]$dp
@@ -130,19 +130,27 @@ average_dp_ll = function(dp_list, child, pax){
       if (k == 0) {
         # loglikelihood
         score = dp_ll(dp, child, pax)
-        avg_ll[[idx]] <- score$bic
+        list_bic[[idx]] <- score$bic
         idx <- idx + 1
       } else {
         cmb <- combn(others, k, simplify = FALSE)
         for (s in cmb) {
           score = dp_ll(dp, child, c(pax, s))
-          avg_ll[[idx]] <- score$bic
+          list_bic[[idx]] <- score$bic
           idx <- idx + 1
         }
       }
     }
   }
-  mean(unlist(avg_ll))
+  #average in the real space
+  bics = unlist(list_bic)
+  log_evid <- -0.5 * bics
+  
+  m <- max(log_evid)
+  log_mean_evid <- m + log(mean(exp(log_evid - m)))
+  
+  -2 * log_mean_evid
+  
 }
 #----------------------  functions ----------------------------------
 
@@ -153,7 +161,7 @@ colnames(data) = vars
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 200
+  n_iter = 20
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
