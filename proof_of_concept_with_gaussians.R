@@ -151,18 +151,45 @@ average_dp_ll = function(dp_list, child, pax){
   
 }
 
-scora_a_dag = function(adj_mat, dp_list){
+score_a_dag = function(adj_mat, dp_list){
   vars = colnames(adj_mat)
-  local_score <- list()
+  local_scores <- numeric(length(vars))
+  names(local_scores) <- vars
   for (child in vars){
     pax = names(adj_mat[,child][which(adj_mat[,child] == 1)])
     
     hits <- find_dps(dp_list, child, pax)
     
     # bic
-    local_score[[i]] = average_dp_ll(hits, child, pax)
+    local_scores[child] = average_dp_ll(hits, child, pax)
   }
-  sum(unlist(local_score))
+  sum(sum(local_scores))
+}
+#----------------------  test functions ----------------------------------
+test_dag_score_equivalence <- function(dags, dp_list,
+                                       tol = 1e-4,
+                                       verbose = TRUE) {
+  if (is.null(names(dags)) || any(names(dags) == "")) {
+    names(dags) <- paste0("DAG_", seq_along(dags))
+  }
+  
+  # score all dags
+  scores <- unlist(lapply(dags, function(A) score_a_dag(A, dp_list)))
+  
+  # pairwise differences
+  diffs <- outer(scores, scores, FUN = "-")
+  
+  # pass/fail: all equal within tol?
+  all_equal <- max(abs(diffs)) < tol
+  
+  if (verbose) {
+    cat("Total scores:\n")
+    print(scores)
+    cat("\nMax |pairwise diff|:", max(abs(diffs)), "\n")
+    cat("All equal?", all_equal, "\n\n")
+  }
+  
+  all_equal
 }
 #----------------------  functions ----------------------------------
 
@@ -285,15 +312,67 @@ A_21 <- matrix(c(
 ), nrow = 5, byrow = TRUE,
 dimnames = list(vars, vars))
 
-A_125 <- matrix(c(
-  0, 1, 0, 0, 1,
-  0, 0, 0, 0, 1,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0
-), nrow = 5, byrow = TRUE,
-dimnames = list(vars, vars))
+dags <- list(
+  A_12,
+  A_21
+)
 
-scora_a_dag(A_12, dp_list)
-scora_a_dag(A_21, dp_list)
-scora_a_dag(A_125, dp_list)
+res <- test_dag_score_equivalence(dags, dp_list)
+res
+
+A1 <- matrix(c(
+  0,1,0,0,1,
+  0,0,0,0,1,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  0,0,0,0,0
+), 5, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A2 <- matrix(c(
+  0,1,0,0,1,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  0,1,0,0,0
+), 5, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A3 <- matrix(c(
+  0,0,0,0,1,
+  1,0,0,0,1,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  0,0,0,0,0
+), 5, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A4 <- matrix(c(
+  0,0,0,0,0,
+  1,0,0,0,1,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  1,0,0,0,0
+), 5, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A5 <- matrix(c(
+  0,1,0,0,0,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  0,0,0,0,0,
+  1,1,0,0,0
+), 5, byrow=TRUE,
+dimnames=list(vars, vars))
+
+
+dags <- list(
+  A1,
+  A2,
+  A3,
+  A4,
+  A5
+)
+
+res <- test_dag_score_equivalence(dags, dp_list)
+res
