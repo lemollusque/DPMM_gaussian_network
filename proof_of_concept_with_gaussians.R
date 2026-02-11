@@ -1,15 +1,8 @@
-setwd("C:/Users/BASTIAN/Desktop/code/git_DPMM_gaussian_network/DPMM_gaussian_network")
-
+library(BiDAG)
 library(dirichletprocess)
 library(gRbase)
-library(BiDAG)
 library(matrixStats)
-library(questionr)
-library(ggpubr)
 library(cowplot)
-library(pcalg)
-library(rstan)
-library(bridgesampling)
 library(ggplot2)
 
 set.seed(101)
@@ -88,13 +81,15 @@ dp_ll = function(dp, child, pax){
       
     }
     
-    # total log-likelihood
-    m <- apply(ll_mat, 1, max)
-    ll = sum(m + log(rowSums(exp(ll_mat - m))))
   }
+  
+  # total log-likelihood
+  m <- apply(ll_mat, 1, max)
+  ll = sum(m + log(rowSums(exp(ll_mat - m))))
+  
   # define bic         
-  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
-  bic <- -2 * ll + p * log(n)
+  k_cond <- length(pax)*K
+  bic <- -2 * ll + k_cond * log(n)
   
   list(ll = ll, bic = bic)
 }
@@ -127,7 +122,7 @@ cov_ll = function(dp_data, child, pax){
   ll = sum(m + log(rowSums(exp(ll_mat - m))))
   
   # define bic         
-  k_cond <- length(pax) + 2
+  k_cond <- length(pax)
   bic <- -2 * ll + k_cond * log(n)
   
   list(ll = ll, bic = bic)
@@ -468,7 +463,7 @@ dp_list <- list()
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 200
+  n_iter = 20
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
