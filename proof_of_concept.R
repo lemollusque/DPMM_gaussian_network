@@ -1,11 +1,7 @@
-setwd("C:/Users/BASTIAN/Desktop/code/git_DPMM_gaussian_network/DPMM_gaussian_network")
-
 library(dirichletprocess)
 library(gRbase)
 library(BiDAG)
 library(matrixStats)
-library(questionr)
-library(ggpubr)
 library(cowplot)
 library(pcalg)
 library(rstan)
@@ -92,13 +88,49 @@ dp_ll = function(dp, child, pax){
       
     }
     
-    # total log-likelihood
-    m <- apply(ll_mat, 1, max)
-    ll = sum(m + log(rowSums(exp(ll_mat - m))))
   }
+  
+  # total log-likelihood
+  m <- apply(ll_mat, 1, max)
+  ll = sum(m + log(rowSums(exp(ll_mat - m))))
+  
   # define bic         
-  p <- (K - 1) + K * d + K * (d * (d + 1) / 2)
-  bic <- -2 * ll + p * log(n)
+  k_cond <- length(pax)*K
+  bic <- -2 * ll + k_cond * log(n)
+  
+  list(ll = ll, bic = bic)
+}
+
+cov_ll = function(dp_data, child, pax){   
+  n <- nrow(dp_data)
+  vars <- c(child, pax)
+  d <- length(vars)    
+  pos  <- match(vars, colnames(dp_data))
+  
+  mu    <- colMeans(dp_data)        
+  Sigma <- cov(dp_data) * (n - 1) / n
+  
+  child_parent_data = dp_data[,pos]
+  child_parent_mu = mu[pos]
+  child_parent_Sigma = Sigma[pos,pos, drop=FALSE]
+  
+  # initiate ll
+  ll_mat <- matrix(NA_real_, nrow = n, ncol = 1)
+  
+  if (length(pax) < 1){
+    ll_mat[, 1] <- dnorm(child_parent_data, mean = child_parent_mu, sd = sqrt(child_parent_Sigma), log = TRUE)
+  }
+  else{
+    ll_mat[, 1] <- loglik_cond_component_dp(child_parent_data, child_parent_mu, child_parent_Sigma)
+  }
+  
+  # total log-likelihood
+  m <- apply(ll_mat, 1, max)
+  ll = sum(m + log(rowSums(exp(ll_mat - m))))
+  
+  # define bic         
+  k_cond <- length(pax)
+  bic <- -2 * ll + k_cond * log(n)
   
   list(ll = ll, bic = bic)
 }
@@ -120,30 +152,12 @@ find_dps <- function(dp_list, child, parents) {
 
 average_dp_ll = function(dp_list, child, pax){ 
   list_bic = list()
-  idx = 1
   for (i in 1:length(dp_list)){
     dp = dp_list[[i]]$dp
     
-    vars = dp_list[[i]]$vars
-    required <- unique(c(child, pax))
-    others <- setdiff(vars, required)
-    
-    # choose any subset of the remaining vars
-    for (k in 0:length(others)) {
-      if (k == 0) {
-        # loglikelihood
-        score = dp_ll(dp, child, pax)
-        list_bic[[idx]] <- score$bic
-        idx <- idx + 1
-      } else {
-        cmb <- combn(others, k, simplify = FALSE)
-        for (s in cmb) {
-          score = dp_ll(dp, child, c(pax, s))
-          list_bic[[idx]] <- score$bic
-          idx <- idx + 1
-        }
-      }
-    }
+    # loglikelihood
+    score = dp_ll(dp, child, pax)
+    list_bic[[i]] <- score$bic
   }
   bics = unlist(list_bic)
   log_evid <- -0.5 * bics
@@ -203,7 +217,7 @@ dp_list <- list()
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 2000
+  n_iter = 200
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)

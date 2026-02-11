@@ -145,30 +145,12 @@ find_dps <- function(dp_list, child, parents) {
 
 average_dp_ll = function(dp_list, child, pax){ 
   list_bic = list()
-  idx = 1
   for (i in 1:length(dp_list)){
     dp = dp_list[[i]]$dp
     
-    vars = dp_list[[i]]$vars
-    required <- unique(c(child, pax))
-    others <- setdiff(vars, required)
-    
-    # choose any subset of the remaining vars
-    for (k in 0:length(others)) {
-      if (k == 0) {
-        # loglikelihood
-        score = dp_ll(dp, child, pax)
-        list_bic[[idx]] <- score$bic
-        idx <- idx + 1
-      } else {
-        cmb <- combn(others, k, simplify = FALSE)
-        for (s in cmb) {
-          score = dp_ll(dp, child, c(pax, s))
-          list_bic[[idx]] <- score$bic
-          idx <- idx + 1
-        }
-      }
-    }
+    # loglikelihood
+    score = dp_ll(dp, child, pax)
+    list_bic[[i]] <- score$bic
   }
   bics = unlist(list_bic)
   log_evid <- -0.5 * bics
@@ -331,7 +313,6 @@ for(i in 1:length(parents_list)){
   pax = parents_list[[i]]
   
   hits <- find_dps(dp_list, child, pax)
-  
   # bic
   avg_score[[i]] = average_dp_ll(hits, child, pax)
 }
@@ -463,7 +444,7 @@ dp_list <- list()
 for (child in vars){
   parents <- vars[vars != child]
   dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 20
+  n_iter = 200
   dp <- DirichletProcessMvnormal(dp_data)
   dp <- Fit(dp, n_iter)
   dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
