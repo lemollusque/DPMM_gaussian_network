@@ -1,5 +1,5 @@
 #bidag fns
-bidag_score_param = function (scoretype = c("bge", "bde", "bdecat", "usr"), data, 
+bidag_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr"), data, 
                       bgepar = list(am = 1, aw = NULL, edgepf = 1), bdepar = list(chi = 0.5, 
                                                                                   edgepf = 2), bdecatpar = list(chi = 0.5, edgepf = 2), 
                       dbnpar = list(samestruct = TRUE, slices = 2, b = 0, stationary = TRUE, 
@@ -476,7 +476,7 @@ bidag_score_param = function (scoretype = c("bge", "bde", "bdecat", "usr"), data
   attr(initparam, "class") <- "scoreparameters"
   return(initparam)
 }
-bidag_score_dag = function (scorepar, incidence) 
+bidag_dagscore = function (scorepar, incidence) 
 {
   if (scorepar$DBN) {
     stop("To calculate DBN score DBNscore should be used!")
@@ -496,7 +496,169 @@ bidag_score_dag = function (scorepar, incidence)
   }
   return(sum(P_local))
 }
-bidag_usr_scoreparam = function (initparam, usrpar = list(pctesttype = "usrCItest", 
+bidag_dagcorescore = function (j, parentnodes, n, param) 
+{
+    if (param$DBN) {
+        if (param$stationary) {
+            internalparents <- parentnodes[which(parentnodes <= 
+                param$nsmall)]
+            corescore <- DAGcorescore(j, parentnodes, param$n + 
+                param$nsmall, param$otherslices) + DAGcorescore(j, 
+                internalparents, param$n, param$firstslice)
+        }
+        else {
+            corescore <- 0
+            for (i in 1:(length(param$paramsets) - 1)) {
+                corescore <- corescore + DAGcorescore(j, parentnodes, 
+                  param$n + param$nsmall, param$paramsets[[i]])
+            }
+            internalparents <- parentnodes[which(parentnodes <= 
+                param$nsmall)]
+            corescore <- corescore + DAGcorescore(j, internalparents, 
+                param$n, param$paramsets[[length(param$paramsets)]])
+        }
+    }
+    else if (param$MDAG) {
+        corescore <- 0
+        for (i in 1:length(param$paramsets)) {
+            corescore <- corescore + DAGcorescore(j, parentnodes, 
+                param$n, param$paramsets[[i]])
+        }
+    }
+    else if (param$type == "bge") {
+        TN <- param$TN
+        awpN <- param$awpN
+        scoreconstvec <- param$scoreconstvec
+        lp <- length(parentnodes)
+        awpNd2 <- (awpN - n + lp + 1)/2
+        A <- TN[j, j]
+        switch(as.character(lp), `0` = {
+            corescore <- scoreconstvec[lp + 1] - awpNd2 * log(A)
+        }, `1` = {
+            D <- TN[parentnodes, parentnodes]
+            logdetD <- log(D)
+            B <- TN[j, parentnodes]
+            logdetpart2 <- log(A - B^2/D)
+            corescore <- scoreconstvec[lp + 1] - awpNd2 * logdetpart2 - 
+                logdetD/2
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - param$logedgepmat[parentnodes, 
+                  j]
+            }
+        }, `2` = {
+            D <- TN[parentnodes, parentnodes]
+            detD <- dettwobytwo(D)
+            logdetD <- log(detD)
+            B <- TN[j, parentnodes]
+            logdetpart2 <- log(dettwobytwo(D - (B) %*% t(B)/A)) + 
+                log(A) - logdetD
+            corescore <- scoreconstvec[lp + 1] - awpNd2 * logdetpart2 - 
+                logdetD/2
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                  j])
+            }
+        }, {
+            D <- as.matrix(TN[parentnodes, parentnodes])
+            choltemp <- chol(D)
+            logdetD <- 2 * log(prod(choltemp[(lp + 1) * c(0:(lp - 
+                1)) + 1]))
+            B <- TN[j, parentnodes]
+            logdetpart2 <- log(A - sum(backsolve(choltemp, B, 
+                transpose = TRUE)^2))
+            corescore <- scoreconstvec[lp + 1] - awpNd2 * logdetpart2 - 
+                logdetD/2
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                  j])
+            }
+        })
+    }
+    else if (param$type == "bde") {
+        lp <- length(parentnodes)
+        noparams <- 2^lp
+        chi <- param$chi
+        scoreconstvec <- param$scoreconstvec
+        switch(as.character(lp), `0` = {
+            N1 <- sum(param$d1[, j])
+            N0 <- sum(param$d0[, j])
+            NT <- N0 + N1
+            corescore <- scoreconstvec[lp + 1] + lgamma(N0 + 
+                chi/(2 * noparams)) + lgamma(N1 + chi/(2 * noparams)) - 
+                lgamma(NT + chi/noparams)
+        }, `1` = {
+            corescore <- scoreconstvec[lp + 1]
+            summys <- param$data[, parentnodes]
+            for (i in 1:noparams - 1) {
+                totest <- which(summys == i)
+                N1 <- sum(param$d1[totest, j])
+                N0 <- sum(param$d0[totest, j])
+                NT <- N0 + N1
+                corescore <- corescore + lgamma(N0 + chi/(2 * 
+                  noparams)) + lgamma(N1 + chi/(2 * noparams)) - 
+                  lgamma(NT + chi/noparams)
+            }
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - param$logedgepmat[parentnodes, 
+                  j]
+            }
+        }, {
+            summys <- colSums(2^(c(0:(lp - 1))) * t(param$data[, 
+                parentnodes]))
+            N1s <- collectC(summys, param$d1[, j], noparams)
+            N0s <- collectC(summys, param$d0[, j], noparams)
+            NTs <- N1s + N0s
+            corescore <- scoreconstvec[lp + 1] + sum(lgamma(N0s + 
+                chi/(2 * noparams))) + sum(lgamma(N1s + chi/(2 * 
+                noparams))) - sum(lgamma(NTs + chi/noparams))
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                  j])
+            }
+        })
+    }
+    else if (param$type == "bdecat") {
+        lp <- length(parentnodes)
+        chi <- param$chi
+        corescore <- param$scoreconstvec[lp + 1]
+        Cj <- param$Cvec[j]
+        switch(as.character(lp), `0` = {
+            Cp <- 1
+            summys <- rep(0, nrow(param$data))
+        }, `1` = {
+            Cp <- param$Cvec[parentnodes]
+            summys <- param$data[, parentnodes]
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - param$logedgepmat[parentnodes, 
+                  j]
+            }
+        }, {
+            Cp <- prod(param$Cvec[parentnodes])
+            summys <- colSums(cumprod(c(1, param$Cvec[parentnodes[-lp]])) * 
+                t(param$data[, parentnodes]))
+            if (!is.null(param$logedgepmat)) {
+                corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                  j])
+            }
+        })
+        if (!is.null(param$weightvector)) {
+            Ns <- collectCcatwt(summys, param$data[, j], param$weightvector, 
+                Cp, Cj)
+        }
+        else {
+            Ns <- collectCcat(summys, param$data[, j], Cp, Cj)
+        }
+        NTs <- rowSums(Ns)
+        corescore <- corescore + sum(lgamma(Ns + chi/(Cp * Cj))) - 
+            sum(lgamma(NTs + chi/Cp)) + Cp * lgamma(chi/Cp) - 
+            (Cp * Cj) * lgamma(chi/(Cp * Cj))
+    }
+    else if (param$type == "usr") {
+        corescore <- usrDAGcorescore(j, parentnodes, n, param)
+    }
+    return(corescore)
+}
+bidag_usrscoreparameters = function (initparam, usrpar = list(pctesttype = "usrCItest", 
                                                           edgepf = 2, edgepmat = NULL, chi = 0.5, delta = NULL, eta = NULL)) 
 {
   if (is.null(usrpar$chi)) {
@@ -542,7 +704,7 @@ bidag_usr_scoreparam = function (initparam, usrpar = list(pctesttype = "usrCItes
                                                                                                initparam$chi/2)
   initparam
 }
-bidag_usr_score_dag = function (j, parentnodes, n, param) 
+bidag_usrDAGcorescore = function (j, parentnodes, n, param) 
 {
   lp <- length(parentnodes)
   chi <- param$chi
@@ -594,14 +756,13 @@ bidag_usr_score_dag = function (j, parentnodes, n, param)
 ####################################################################
 # dp bidag
 ####################################################################
-bidag_bge = function (scoretype = c("bge", "bde", "bdecat", "usr"), data, 
-                              bgepar = list(am = 1, aw = NULL, edgepf = 1), bdepar = list(chi = 0.5, 
-                                                                                          edgepf = 2), bdecatpar = list(chi = 0.5, edgepf = 2), 
-                              dbnpar = list(samestruct = TRUE, slices = 2, b = 0, stationary = TRUE, 
-                                            rowids = NULL, datalist = NULL, learninit = TRUE), usrpar = list(pctesttype = c("bge", 
-                                                                                                                            "bde", "bdecat")), mixedpar = list(nbin = 0), MDAG = FALSE, 
-                              DBN = FALSE, weightvector = NULL, bgnodes = NULL, edgepmat = NULL, 
-                              nodeslabels = NULL) 
+bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr"), data, 
+                      bgepar = list(am = 1, aw = NULL, edgepf = 1), 
+                      dbnpar = list(samestruct = TRUE, slices = 2, b = 0, stationary = TRUE, 
+                                    rowids = NULL, datalist = NULL, learninit = TRUE), usrpar = list(pctesttype = c("bge", 
+                                                                                                                    "bde", "bdecat")), mixedpar = list(nbin = 0), MDAG = FALSE, 
+                      DBN = FALSE, weightvector = NULL, bgnodes = NULL, edgepmat = NULL, 
+                      nodeslabels = NULL) 
 {
   initparam <- list()
   if (DBN) {
