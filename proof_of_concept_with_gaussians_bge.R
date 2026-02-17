@@ -29,13 +29,127 @@ dp_membership_probs <- function(dp) {
   pointsPerCluster <- dp$pointsPerCluster
   probs <- matrix(0, nrow = N, ncol = numLabels)
   for (i in seq_len(N)) {
-    probs[i, 1:K] <- pointsPerCluster * 
+    probs[i, 1:numLabels] <- pointsPerCluster * 
       dirichletprocess:::Likelihood.mvnormal(mdObj, 
                                              y[i,, drop = FALSE], 
                                              clusterParams)
   }
   probs <- probs / rowSums(probs)
   return(probs)
+}
+dp_bge = function(data, 
+                  membershipp,
+                  child, pax, 
+                  bgepar = list(am = 1, 
+                                aw = NULL, 
+                                T0scale = NULL, 
+                                edgepf = 1),
+                  bgnodes = NULL, 
+                  edgepmat = NULL, 
+                  nodeslabels = NULL){ 
+  
+  initparam <- list()
+  
+  N = nrow(data)
+  n = ncol(data)
+  bgn <- length(bgnodes)
+  
+  initparam$bgnodes <- bgnodes
+  initparam$static <- bgnodes
+  if (!is.null(bgnodes)) {
+    initparam$mainnodes <- c(1:n)[-bgnodes]
+  }
+  else initparam$mainnodes <- c(1:n)
+  
+  initparam$bgn <- bgn
+  initparam$n <- n
+  initparam$nsmall <- n - bgn
+  
+  if (is.null(nodeslabels)) {
+    if (all(is.character(colnames(data)))) {
+      nodeslabels <- colnames(data)
+    }
+    else {
+      nodeslabels <- sapply(c(1:n), function(x) paste("v", 
+                                                      x, sep = ""))
+    }
+  }
+  colnames(data) <- nodeslabels
+  initparam$labels <- nodeslabels
+  initparam$labels.short <- initparam$labels
+  initparam$data <- data
+  
+  if (is.null(edgepmat)) {
+    initparam$logedgepmat <- NULL
+  }
+  else {
+    if (all(edgepmat > 0)) {
+      initparam$logedgepmat <- log(edgepmat)
+    }
+    else stop("all entries of edgepmat matrix must be bigger than 0! 1 corresponds to no penalization")
+  }
+  
+  if (is.null(bgepar$am)) {
+    bgepar$am <- 1
+  }
+  if (is.null(bgepar$aw)) {
+    bgepar$aw <- n + bgepar$am + 1
+  }
+  if (is.null(bgepar$T0scale)) {
+    bgepar$T0scale <- bgepar$am * (bgepar$aw - n - 1)/(bgepar$am + 1)
+  }
+  if (is.null(bgepar$edgepf)) {
+    bgepar$edgepf <- 1
+  }
+  
+  initparam$am <- bgepar$am
+  initparam$aw <- bgepar$aw
+  initparam$pf <- bgepar$edgepf
+  initparam$N <- N
+  
+  
+  mu0 <- numeric(n)
+  T0 <- diag(bgepar$T0scale, n, n)
+  K = ncol(membershipp)
+  means <- vector("list", K)
+  covmat <- vector("list", K)
+  TN <- vector("list", K)
+  awpN <- vector("list", K)
+  for (k in  1:K){
+    weightvector = membershipp[,k]
+    Nk <- sum(weightvector)
+    forcov <- cov.wt(data, wt = weightvector, cor = TRUE, 
+                     method = "ML")
+    covmatk <- forcov$cov * Nk
+    means[[k]] <- forcov$center
+    TN[[k]] <- T0 + covmatk + ((bgepar$am * Nk)/(bgepar$am + 
+                                      N)) * (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+    awpN[[k]] = bgepar$aw + Nk
+  }
+  
+  initparam$means <- means
+  initparam$TN <- TN
+  initparam$awpN <- awpN
+  
+  
+  #%--------------------------------%
+  
+  
+  
+  constscorefact <- -(N/2) * log(pi) + (1/2) * log(bgepar$am/(bgepar$am + 
+                                                                N))
+  initparam$muN <- (N * means + bgepar$am * mu0)/(N + bgepar$am)
+  initparam$SigmaN <- initparam$TN/(initparam$awpN - n - 
+                                      1)
+  initparam$scoreconstvec <- numeric(n)
+  for (j in (1:n)) {
+    awp <- bgepar$aw - n + j
+    initparam$scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
+      lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(bgepar$T0scale) - 
+      j * log(initparam$pf)
+  }
+  
+ 
 }
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
   y <- dp_data[,1] #child node is in the first column
