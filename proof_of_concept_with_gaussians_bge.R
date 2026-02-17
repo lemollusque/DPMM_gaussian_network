@@ -20,6 +20,23 @@ data <- data.frame(x1, x2, x3, x4, x5)
 
 
 #---------------------- functions ----------------------------------
+dp_membership_probs <- function(dp) {
+  y <- dp$data
+  N <- nrow(y)
+  clusterParams <- dp$clusterParameters
+  numLabels <- dp$numberClusters
+  mdObj <- dp$mixingDistribution
+  pointsPerCluster <- dp$pointsPerCluster
+  probs <- matrix(0, nrow = N, ncol = K)
+  for (i in seq_len(n)) {
+    probs[i, 1:K] <- pointsPerCluster * 
+      dirichletprocess:::Likelihood.mvnormal(mdObj, 
+                                             y[i,, drop = FALSE], 
+                                             clusterParams)
+  }
+  probs <- probs / rowSums(probs)
+  return(probs)
+}
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
   y <- dp_data[,1] #child node is in the first column
   X <- as.matrix(dp_data[,-1, drop=FALSE]) #parents
@@ -230,6 +247,7 @@ g0Priors <- list(
 )
 dp <- DirichletProcessMvnormal(dp_data, g0Priors)
 dp <- Fit(dp, n_iter)
+Gamma <- dp_membership_probs(dp)
 
 ll = list()
 bic = list()
