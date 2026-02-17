@@ -236,17 +236,26 @@ possible_parents= sort(unique(unlist(parents_list)))
 dp_data = scale(data[,c(child, possible_parents)]) 
 n_iter = 200
 # TODO default params:
-am = 1
-aw = ncol(data) + am + 1 #biggest parent data set
-t <- am * (aw - ncol(data) - 1) / (am + 1)
+n <- ncol(data)
+alpha_mu <- 1          
+alpha_w  <- n + alpha_mu + 1      
+
+t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
+
 g0Priors <- list(
-  mu0    = rep(0, ncol(data)),
-  Lambda = diag(ncol(data)) / t,   # T0 = (1/t) I
-  kappa0 = am,
-  nu     = aw
+  mu0    = rep(0, n),
+  Lambda = diag(n) / t,   # T = (1/t) I
+  kappa0 = alpha_mu,
+  nu     = alpha_w
 )
 dp <- DirichletProcessMvnormal(dp_data, g0Priors)
 dp <- Fit(dp, n_iter)
+
+# to test multiple clusters
+set.seed(12)
+dp <- Fit(dp, 10)
+print(dp$numberClusters)
+bgepar = list(am = alpha_mu, aw = alpha_w, T0scale = t, edgepf = 1)
 Gamma <- dp_membership_probs(dp)
 
 ll = list()
