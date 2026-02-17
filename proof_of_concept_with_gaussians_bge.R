@@ -27,8 +27,8 @@ dp_membership_probs <- function(dp) {
   numLabels <- dp$numberClusters
   mdObj <- dp$mixingDistribution
   pointsPerCluster <- dp$pointsPerCluster
-  probs <- matrix(0, nrow = N, ncol = K)
-  for (i in seq_len(n)) {
+  probs <- matrix(0, nrow = N, ncol = numLabels)
+  for (i in seq_len(N)) {
     probs[i, 1:K] <- pointsPerCluster * 
       dirichletprocess:::Likelihood.mvnormal(mdObj, 
                                              y[i,, drop = FALSE], 
