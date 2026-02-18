@@ -233,6 +233,10 @@ usrscoreparameters <- function(initparam,
 }
 
 #----------------------  functions ----------------------------------
+# replace BIDAG functions
+unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
+assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))
+lockBinding("usrscoreparameters", asNamespace("BiDAG"))
 
 child = "x5"
 parents_list <- list(
@@ -287,8 +291,3 @@ usr_score <- BiDAG::scoreparameters(scoretype = "usr",
                                            edgepf = 1
                              )
 )
-
-
-scoreparameters
-getAnywhere("scoreparameters")
-find("scoreparameters")
