@@ -756,411 +756,164 @@ bidag_usrDAGcorescore = function (j, parentnodes, n, param)
 ####################################################################
 # dp bidag
 ####################################################################
-bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr"), data, 
-                      bgepar = list(am = 1, aw = NULL, edgepf = 1), 
-                      dbnpar = list(samestruct = TRUE, slices = 2, b = 0, stationary = TRUE, 
-                                    rowids = NULL, datalist = NULL, learninit = TRUE), 
-                      usrpar = list(pctesttype = c("bge", "bde", "bdecat")), 
-                      mixedpar = list(nbin = 0), 
-                      MDAG = FALSE, 
-                      DBN = FALSE, 
-                      weightvector = NULL, 
-                      bgnodes = NULL, 
-                      edgepmat = NULL, 
-                      nodeslabels = NULL) 
+#---------------------- functions ----------------------------------
+dp_membership_probs <- function(dp) {
+  y <- dp$data
+  N <- nrow(y)
+  clusterParams <- dp$clusterParameters
+  numLabels <- dp$numberClusters
+  mdObj <- dp$mixingDistribution
+  pointsPerCluster <- dp$pointsPerCluster
+  probs <- matrix(0, nrow = N, ncol = numLabels)
+  for (i in seq_len(N)) {
+    probs[i, 1:numLabels] <- pointsPerCluster * 
+      dirichletprocess:::Likelihood.mvnormal(mdObj, 
+                                             y[i,, drop = FALSE], 
+                                             clusterParams)
+  }
+  probs <- probs / rowSums(probs)
+  return(probs)
+}
+#----------------------  BiDAG ----------------------------------
+usrscoreparameters <- function(initparam, 
+                               usrpar = list(pctesttype = "bge",
+                                             membershipp = NULL,
+                                             am = 1, 
+                                             aw = NULL, 
+                                             T0scale = NULL,
+                                             edgepf = 1
+                                             )
+                                       ) 
 {
-  initparam <- list()
-  if (DBN) {
-    dbnpardef <- list(samestruct = TRUE, slices = 2, b = 0, 
-                      stationary = TRUE, rowids = NULL, datalist = NULL, 
-                      learninit = TRUE)
-    dbnpardef[names(dbnpar)] <- dbnpar[names(dbnpar)]
-    dbnpar <- dbnpardef
-    if (is.null(dbnpar$b)) 
-      bgnodes <- NULL
-    else if (dbnpar$b > 0) 
-      bgnodes <- c(1:dbnpar$b)
-    else bgnodes <- NULL
-    initparam$learninit <- dbnpar$learninit
-    if (!is.null(dbnpar$samestruct)) {
-      initparam$split <- !dbnpar$samestruct
-    }
-    else {
-      initparam$split <- FALSE
-    }
-    if (dbnpar$slices > 2 & !dbnpar$stationary) 
-      MDAG <- TRUE
+  if (is.null(usrpar$membershipp)) stop("Gamma (membershipp) is missing")
+  if (is.null(usrpar$edgepf)) {
+    usrpar$edgepf <- 1
   }
-  bgn <- length(bgnodes)
-  if (DBN) {
-    if (is.null(dbnpar$datalist)) {
-      n <- (ncol(data) - bgn)/dbnpar$slices + bgn
-    }
-    else {
-      n <- (ncol(data[[2]]) - bgn)/2 + bgn
-    }
+  if (is.null(usrpar$am)) {
+    usrpar$am <- 1
   }
-  else n <- ncol(data)
-  nsmall <- n - bgn
-  if (!DBN) {
-    if (anyNA(data)) {
-      stop("Dataset contains missing data")
-    }
-    if (ncol(data) != nsmall + bgn) {
-      stop("n and the number of columns in the data do not match")
-    }
+  if (is.null(usrpar$aw)) {
+    usrpar$aw <- initparam$n + usrpar$am + 1
   }
-  else {
-    if (dbnpar$stationary) {
-      if (is.null(dbnpar$datalist)) {
-        if (ncol(data) != nsmall * dbnpar$slices + bgn) {
-          stop("n, bgn and the number of columns in the data do not match")
-        }
-      }
-    }
+  if (is.null(usrpar$T0scale)) {
+    usrpar$T0scale <- usrpar$am * (usrpar$aw - initparam$n - 1)/(usrpar$am + 1)
   }
-  if (!is.null(weightvector)) {
-    if (length(weightvector) != nrow(data)) {
-      stop("Length of the weightvector does not match the number of rows (observations) in data")
-    }
-  }
-  if (is.null(nodeslabels)) {
-    if (!DBN) {
-      if (all(is.character(colnames(data)))) {
-        nodeslabels <- colnames(data)
-      }
-      else {
-        nodeslabels <- sapply(c(1:n), function(x) paste("v", 
-                                                        x, sep = ""))
-      }
-    }
-    else {
-      if (dbnpar$stationary & is.null(dbnpar$datalist)) {
-        if (all(is.character(colnames(data)))) {
-          nodeslabels <- colnames(data)
-        }
-        else {
-          if (!is.null(bgnodes)) {
-            staticnames <- sapply(c(1:bgn), function(x) paste("s", 
-                                                              x, sep = ""))
-            dynamicnames <- rep(sapply(c(1:nsmall), function(x) paste("v", 
-                                                                      x, sep = "")), dbnpar$slices)
-            for (i in 2:dbnpar$slices) {
-              dynamicnames[1:nsmall + (i - 1) * nsmall] <- paste(dynamicnames[1:nsmall + 
-                                                                                (i - 1) * nsmall], ".", i, sep = "")
-            }
-            nodeslabels <- c(staticnames, dynamicnames)
-          }
-          else {
-            nodeslabels <- rep(sapply(c(1:n), function(x) paste("v", 
-                                                                x, sep = "")), dbnpar$slices)
-            for (i in 2:dbnpar$slices) {
-              nodeslabels[1:nsmall + (i - 1) * nsmall] <- paste(nodeslabels[1:nsmall + 
-                                                                              (i - 1) * nsmall], ".", i, sep = "")
-            }
-          }
-        }
-      }
-      else {
-        nodeslabels <- colnames(data[[2]])
-      }
-    }
-  }
-  multwv <- NULL
-  if (is.null(dbnpar$datalist)) 
-    colnames(data) <- nodeslabels
-  initparam$labels <- nodeslabels
-  initparam$type <- scoretype
-  initparam$DBN <- DBN
-  initparam$MDAG <- MDAG
-  initparam$weightvector <- weightvector
-  initparam$data <- data
-  if (DBN) {
-    initparam$bgnodes <- c(1:n + nsmall)
-    if (bgn > 0) {
-      initparam$static <- c(1:bgn)
-    }
-    initparam$mainnodes <- c(1:nsmall + bgn)
-  }
-  else {
-    initparam$bgnodes <- bgnodes
-    initparam$static <- bgnodes
-    if (!is.null(bgnodes)) {
-      initparam$mainnodes <- c(1:n)[-bgnodes]
-    }
-    else initparam$mainnodes <- c(1:n)
-  }
-  initparam$bgn <- bgn
-  initparam$n <- n
-  initparam$nsmall <- nsmall
-  if (DBN) {
-    if (dbnpar$stationary) {
-      initparam$labels.short <- initparam$labels[1:(n + 
-                                                      nsmall)]
-    }
-    else {
-      nodeslabels <- colnames(data[[1]])
-      initparam$labels <- nodeslabels
-      initparam$labels.short <- colnames(data[[1]])
-    }
-  }
-  else {
-    initparam$labels.short <- initparam$labels
-  }
-  if (is.null(edgepmat)) {
+  if (is.null(usrpar$edgepmat)) {
     initparam$logedgepmat <- NULL
   }
   else {
-    if (all(edgepmat > 0)) {
-      initparam$logedgepmat <- log(edgepmat)
-    }
-    else stop("all entries of edgepmat matrix must be bigger than 0! 1 corresponds to no penalization")
-  }
-  if (DBN) {
-    if (!dbnpar$stationary) {
-      initparam$stationary <- FALSE
-      initparam$slices <- length(data)
-      initparam$intstr <- list()
-      initparam$trans <- list()
-      initparam$usrinitstr <- list()
-      initparam$usrintstr <- list()
-      initparam$usrtrans <- list()
-      initparam$usrinitstr$rows <- c(1:n)
-      initparam$usrinitstr$cols <- c(1:nsmall + bgn)
-      if (bgn == 0) 
-        initparam$usrintstr$rows <- c(1:nsmall + n)
-      else initparam$usrintstr$rows <- c(1:bgn, 1:nsmall + 
-                                           n)
-      initparam$usrintstr$cols <- c(1:nsmall + n)
-      initparam$usrtrans$rows <- c(1:nsmall + bgn)
-      initparam$usrtrans$cols <- c(1:nsmall + n)
-      if (bgn != 0) {
-        initparam$intstr$rows <- c(1:bgn + nsmall, 1:nsmall)
-      }
-      else {
-        initparam$intstr$rows <- c(1:nsmall)
-      }
-      initparam$intstr$cols <- c(1:nsmall)
-      initparam$trans$rows <- c(1:nsmall + n)
-      initparam$trans$cols <- c(1:nsmall)
-      initparam$paramsets <- list()
-      if (!is.null(edgepmat)) {
-        edgepmatfirst <- edgepmat[1:n, 1:n]
-        edgepmat <- DBNbacktransform(edgepmat, initparam, 
-                                     nozero = TRUE)$trans
-      }
-      else {
-        edgepmatfirst <- NULL
-      }
-      initparam$nsets <- length(data)
-      datalocal <- data[[length(data)]]
-      if (bgn > 0) 
-        datalocal <- datalocal[, c(1:nsmall + bgn, 1:bgn)]
-      initparam$paramsets[[length(data)]] <- scoreparameters(scoretype = scoretype, 
-                                                             datalocal, weightvector = NULL, bgnodes = NULL, 
-                                                             bgepar = bgepar, bdepar = bdepar, bdecatpar = bdecatpar, 
-                                                             dbnpar = dbnpar, edgepmat = edgepmatfirst, DBN = FALSE)
-      for (i in 1:(length(data) - 1)) {
-        datalocal <- data[[i]]
-        if (bgn > 0) 
-          datalocal <- datalocal[, c(1:nsmall + nsmall + 
-                                       bgn, 1:bgn, 1:nsmall + bgn)]
-        else {
-          datalocal <- datalocal[, c(1:nsmall + nsmall, 
-                                     1:nsmall)]
-        }
-        initparam$paramsets[[i]] <- scoreparameters(scoretype = scoretype, 
-                                                    datalocal, weightvector = NULL, bgnodes = initparam$bgnodes, 
-                                                    bgepar = bgepar, bdepar = bdepar, bdecatpar = bdecatpar, 
-                                                    dbnpar = dbnpar, edgepmat = edgepmat, DBN = FALSE)
-      }
-    }
-    else {
-      initparam$stationary <- TRUE
-      initparam$slices <- dbnpar$slices
-      if (!is.null(dbnpar$datalist)) {
-        datalocal <- data[[2]]
-        collabels <- colnames(datalocal)
-        if (bgn > 0) 
-          newbgnodes <- bgnodes + nsmall
-        else newbgnodes <- bgnodes
-      }
-      else {
-        datalocal <- data[, 1:(2 * nsmall + bgn)]
-        collabels <- colnames(datalocal)
-        if (bgn > 0) {
-          bgdata <- data[, bgnodes]
-          if (dbnpar$slices > 2) {
-            for (jj in 1:(dbnpar$slices - 2)) {
-              datatobind <- cbind(bgdata, data[, nsmall * 
-                                                 jj + 1:(2 * nsmall) + bgn])
-              colnames(datatobind) <- collabels
-              datalocal <- rbind(datalocal, datatobind)
-            }
-          }
-          newbgnodes <- bgnodes + nsmall
-        }
-        else {
-          if (dbnpar$slices > 2) {
-            for (jj in 1:(dbnpar$slices - 2)) {
-              datatobind <- data[, n * jj + 1:(2 * n)]
-              colnames(datatobind) <- collabels
-              datalocal <- rbind(datalocal, datatobind)
-            }
-          }
-          newbgnodes <- bgnodes
-        }
-      }
-      if (bgn > 0) {
-        datalocal <- datalocal[, c(1:nsmall + nsmall + 
-                                     bgn, 1:bgn, 1:nsmall + bgn)]
-      }
-      else {
-        datalocal <- datalocal[, c(1:n + n, 1:n)]
-      }
-      initparam$intstr <- list()
-      initparam$trans <- list()
-      initparam$usrinitstr <- list()
-      initparam$usrintstr <- list()
-      initparam$usrtrans <- list()
-      initparam$usrinitstr$rows <- c(1:n)
-      initparam$usrinitstr$cols <- c(1:nsmall + bgn)
-      if (bgn == 0) 
-        initparam$usrintstr$rows <- c(1:nsmall + n)
-      else initparam$usrintstr$rows <- c(1:bgn, 1:nsmall + 
-                                           n)
-      initparam$usrintstr$cols <- c(1:nsmall + n)
-      initparam$usrtrans$rows <- c(1:nsmall + bgn)
-      initparam$usrtrans$cols <- c(1:nsmall + n)
-      if (bgn != 0) {
-        initparam$intstr$rows <- c(1:bgn + nsmall, 1:nsmall)
-      }
-      else {
-        initparam$intstr$rows <- c(1:nsmall)
-      }
-      initparam$intstr$cols <- c(1:nsmall)
-      initparam$trans$rows <- c(1:nsmall + n)
-      initparam$trans$cols <- c(1:nsmall)
-      if (!is.null(weightvector)) {
-        weightvector.other <- rep(weightvector, dbnpar$slices - 
-                                    1)
-      }
-      else {
-        weightvector.other <- weightvector
-      }
-      lNA <- 0
-      if (anyNA(datalocal)) {
-        NArows <- which(apply(datalocal, 1, anyNA) == 
-                          TRUE)
-        lNA <- length(NArows)
-        datalocal <- datalocal[-NArows, ]
-        if (!is.null(weightvector)) {
-          weightvector.other <- weightvector.other[-NArows]
-        }
-      }
-      if (!is.null(edgepmat)) {
-        edgepmatfirst <- edgepmat[1:n, 1:n]
-        edgepmat <- DBNbacktransform(edgepmat, initparam, 
-                                     nozero = TRUE)
-        if (initparam$split) {
-          edgepmat <- edgepmat$trans
-        }
-        else {
-          initparam$logedgepmat <- log(edgepmat)
-        }
-      }
-      else {
-        edgepmatfirst <- NULL
-      }
-      initparam$otherslices <- scoreparameters(scoretype = scoretype, 
-                                               datalocal, weightvector = weightvector.other, 
-                                               bgnodes = initparam$bgnodes, bgepar = bgepar, 
-                                               bdepar = bdepar, bdecatpar = bdecatpar, dbnpar = dbnpar, 
-                                               edgepmat = edgepmat, DBN = FALSE)
-      bdecatpar$edgepf <- 1
-      bdepar$edgepf <- 1
-      if (!is.null(dbnpar$datalist)) {
-        datalocal <- data[[1]]
-      }
-      else {
-        datalocal <- data[, 1:(nsmall + bgn)]
-      }
-      if (bgn == 0) {
-        datalocal <- datalocal[, c(1:nsmall)]
-      }
-      else {
-        datalocal <- datalocal[, c(1:nsmall + bgn, 1:bgn)]
-      }
-      if (!is.null(dbnpar$rowids)) {
-        datalocal <- datalocal[which(dbnpar$rowids == 
-                                       1), ]
-      }
-      if (anyNA(datalocal)) {
-        NArows <- which(apply(datalocal, 1, anyNA) == 
-                          TRUE)
-        lNA <- lNA + length(NArows)
-        datalocal <- datalocal[-NArows, ]
-        if (!is.null(weightvector)) {
-          weightvector <- weightvector[-NArows]
-        }
-      }
-      if (lNA > 0) {
-        cat(paste(lNA, "rows were removed due to missing data"), 
-            "\n")
-      }
-      initparam$firstslice <- scoreparameters(scoretype = "bge", 
-                                              datalocal, weightvector = weightvector, bgnodes = newbgnodes, 
-                                              dbnpar = dbnpar, edgepmat = edgepmatfirst, DBN = FALSE)
-    }
-  }
-  else {
-    if (is.null(bgepar$am)) {
-      bgepar$am <- 1
-    }
-    if (is.null(bgepar$aw)) {
-      bgepar$aw <- n + bgepar$am + 1
-    }
-    if (is.null(bgepar$edgepf)) {
-      bgepar$edgepf <- 1
-    }
-    if (is.null(weightvector)) {
-      N <- nrow(data)
-      covmat <- cov(data) * (N - 1)
-      means <- colMeans(data)
-    }
-    else {
-      N <- sum(weightvector)
-      forcov <- cov.wt(data, wt = weightvector, cor = TRUE, 
-                       method = "ML")
-      covmat <- forcov$cov * N
-      means <- forcov$center
-    }
-    initparam$am <- bgepar$am
-    initparam$aw <- bgepar$aw
-    initparam$pf <- bgepar$edgepf
-    initparam$N <- N
-    initparam$means <- means
-    mu0 <- numeric(n)
-    T0scale <- bgepar$am * (bgepar$aw - n - 1)/(bgepar$am + 
-                                                  1)
-    T0 <- diag(T0scale, n, n)
-    initparam$TN <- T0 + covmat + ((bgepar$am * N)/(bgepar$am + 
-                                                      N)) * (mu0 - means) %*% t(mu0 - means)
-    initparam$awpN <- bgepar$aw + N
-    constscorefact <- -(N/2) * log(pi) + (1/2) * log(bgepar$am/(bgepar$am + 
-                                                                  N))
-    initparam$muN <- (N * means + bgepar$am * mu0)/(N + bgepar$am)
-    initparam$SigmaN <- initparam$TN/(initparam$awpN - n - 
-                                        1)
-    initparam$scoreconstvec <- numeric(n)
-    for (j in (1:n)) {
-      awp <- bgepar$aw - n + j
-      initparam$scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
-        lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(T0scale) - 
-        j * log(initparam$pf)
-    }
+    initparam$logedgepmat <- log(usrpar$edgepmat)
   }
   
-  attr(initparam, "class") <- "scoreparameters"
-  return(initparam)
+  initparam$pf <- usrpar$edgepf
+  initparam$am <- usrpar$am
+  initparam$aw <- usrpar$aw
+  initparam$pf <- usrpar$edgepf
+  
+  mu0 <- numeric(initparam$n)
+  T0 <- diag(usrpar$T0scale, initparam$n, initparam$n)
+  K = ncol(usrpar$membershipp)
+  Nk <- numeric(K)
+  means <- vector("list", K)
+  TN <- vector("list", K)
+  awpN <- numeric(K)
+  constscorefact <- numeric(K)
+  muN <- vector("list", K)
+  SigmaN <- vector("list", K)
+  for (k in  1:K){
+    weightvector = usrpar$membershipp[,k]
+    Nk[k] <- sum(weightvector)
+    forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
+    covmatk <- forcov$cov * Nk[k]
+    means[[k]] <- forcov$center
+    TN[[k]] <- T0 + covmatk + 
+      ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
+      (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+    awpN[k] = usrpar$aw + Nk[k]
+    constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
+    muN[[k]] <- (Nk[k] * means[[k]] + usrpar$am * mu0)/(Nk[k] + usrpar$am)
+    SigmaN[[k]] <- TN[[k]]/(awpN[k] - initparam$n - 1)
+  }
+  
+  N <- sum(Nk)
+  initparam$K <- K
+  initparam$means <- means
+  initparam$TN <- TN
+  initparam$awpN <- awpN
+  initparam$muN <- muN
+  initparam$SigmaN <- SigmaN
+  
+  initparam$scoreconstvec <- numeric(initparam$n)
+  for (j in (1:initparam$n)) {
+    awp <- usrpar$aw - initparam$n + j
+    initparam$scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
+      sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
+      j * log(initparam$pf)
+  }
+  
+  initparam
+}
+usrDAGcorescore <- function (j, parentnodes, n, param) {
+  K=param$K
+  TN <- param$TN
+  awpN <- param$awpN
+  scoreconstvec <- param$scoreconstvec
+  lp <- length(parentnodes)
+  awpNd2 <- (awpN - n + lp + 1)/2
+  A <- sapply(TN, function(m) m[j, j])
+  
+  
+  switch(as.character(lp), 
+         `0` = {
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * log(A))
+  }, 
+  `1` = {
+    D <- sapply(TN, function(m) m[parentnodes, parentnodes])
+    logdetD <- log(D)
+    B <- sapply(TN, function(m) m[j, parentnodes])
+    logdetpart2 <- log(A - B^2/D)
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+      sum(logdetD)/2
+    if (!is.null(param$logedgepmat)) {
+      corescore <- corescore - param$logedgepmat[parentnodes, 
+                                                 j]
+    }
+  }, 
+  `2` = {
+    D <- lapply(TN, function(m) m[parentnodes, parentnodes, drop = FALSE])
+    detD <- sapply(D, function(m) BiDAG:::dettwobytwo(m))
+    logdetD <- log(detD)
+    B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+    logdetpart2 <- vapply(seq_along(D), function(k) {
+      Ak <- A[k]
+      Bk <- matrix(B[[k]], nrow = 1)            
+      Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        
+      log(BiDAG:::dettwobytwo(Mk)) + log(Ak) - logdetD[k]
+    }, numeric(1))
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+      sum(logdetD)/2
+    if (!is.null(param$logedgepmat)) {
+      corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                     j])
+    }
+  }, 
+  {
+    D <- lapply(TN, function(m) as.matrix(m[parentnodes, parentnodes, drop = FALSE]))
+    choltemp <- lapply(D, function(m) chol(m))
+    logdetD <- vapply(seq_along(TN), function(k) {
+      2 * sum(log(diag(choltemp[[k]])))
+    }, numeric(1))
+    B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+    logdetpart2 <- vapply(seq_along(TN), function(k) {
+      val <- log(A[k] - sum(backsolve(choltemp[[k]], t(B[[k]]), transpose=TRUE)^2))
+    }, numeric(1))
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+      sum(logdetD)/2
+    if (!is.null(param$logedgepmat)) {
+      corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                     j])
+    }
+  })
+  
+  corescore
 }
