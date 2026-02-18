@@ -111,45 +111,45 @@ dp_bge = function(data,
   mu0 <- numeric(n)
   T0 <- diag(bgepar$T0scale, n, n)
   K = ncol(membershipp)
+  Nk <- numeric(K)
   means <- vector("list", K)
-  covmat <- vector("list", K)
   TN <- vector("list", K)
-  awpN <- vector("list", K)
+  awpN <- numeric(K)
+  constscorefact <- numeric(K)
+  muN <- vector("list", K)
+  SigmaN <- vector("list", K)
   for (k in  1:K){
     weightvector = membershipp[,k]
-    Nk <- sum(weightvector)
+    Nk[k] <- sum(weightvector)
     forcov <- cov.wt(data, wt = weightvector, cor = TRUE, 
                      method = "ML")
-    covmatk <- forcov$cov * Nk
+    covmatk <- forcov$cov * Nk[k]
     means[[k]] <- forcov$center
-    TN[[k]] <- T0 + covmatk + ((bgepar$am * Nk)/(bgepar$am + 
-                                      N)) * (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
-    awpN[[k]] = bgepar$aw + Nk
+    TN[[k]] <- T0 + covmatk + 
+      ((bgepar$am * Nk[k])/(bgepar$am + Nk[k])) * 
+      (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+    awpN[k] = bgepar$aw + Nk[k]
+    constscorefact[k] =  (1/2) * log(bgepar$am/(bgepar$am + Nk[k]))
+    muN[[k]] <- (Nk[k] * means[[k]] + bgepar$am * mu0)/(Nk[k] + bgepar$am)
+    SigmaN[[k]] <- TN[[k]]/(awpN[k] - n - 1)
   }
   
   initparam$means <- means
   initparam$TN <- TN
   initparam$awpN <- awpN
+  initparam$muN <- muN
+  initparam$SigmaN <- SigmaN
   
   
-  #%--------------------------------%
-  
-  
-  
-  constscorefact <- -(N/2) * log(pi) + (1/2) * log(bgepar$am/(bgepar$am + 
-                                                                N))
-  initparam$muN <- (N * means + bgepar$am * mu0)/(N + bgepar$am)
-  initparam$SigmaN <- initparam$TN/(initparam$awpN - n - 
-                                      1)
   initparam$scoreconstvec <- numeric(n)
   for (j in (1:n)) {
     awp <- bgepar$aw - n + j
-    initparam$scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
-      lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(bgepar$T0scale) - 
+    initparam$scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
+      sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(bgepar$T0scale) - 
       j * log(initparam$pf)
   }
-  
- 
+  attr(initparam, "class") <- "scoreparameters"
+  return(initparam)
 }
 loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
   y <- dp_data[,1] #child node is in the first column
