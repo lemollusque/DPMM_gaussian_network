@@ -178,6 +178,12 @@ usrscoreparameters <- function(initparam,
   if (is.null(usrpar$T0scale)) {
     usrpar$T0scale <- usrpar$am * (usrpar$aw - initparam$n - 1)/(usrpar$am + 1)
   }
+  if (is.null(usrpar$edgepmat)) {
+    initparam$logedgepmat <- NULL
+  }
+  else {
+    initparam$logedgepmat <- log(usrpar$edgepmat)
+  }
   
   initparam$pf <- usrpar$edgepf
   initparam$am <- usrpar$am
@@ -210,6 +216,7 @@ usrscoreparameters <- function(initparam,
   }
   
   N <- sum(Nk)
+  initparam$K <- K
   initparam$means <- means
   initparam$TN <- TN
   initparam$awpN <- awpN
