@@ -37,123 +37,6 @@ dp_membership_probs <- function(dp) {
   probs <- probs / rowSums(probs)
   return(probs)
 }
-dp_bge = function(data, 
-                  membershipp,
-                  bgepar = list(am = 1, 
-                                aw = NULL, 
-                                T0scale = NULL, 
-                                edgepf = 1),
-                  bgnodes = NULL, 
-                  edgepmat = NULL, 
-                  nodeslabels = NULL){ 
-  
-  initparam <- list()
-  initparam$type <- "usr"
-  initparam$MDAG <- FALSE
-  initparam$DBN <- FALSE
-  
-  N = nrow(data)
-  n = ncol(data)
-  bgn <- length(bgnodes)
-  
-  initparam$bgnodes <- bgnodes
-  initparam$static <- bgnodes
-  if (!is.null(bgnodes)) {
-    initparam$mainnodes <- c(1:n)[-bgnodes]
-  }
-  else initparam$mainnodes <- c(1:n)
-  
-  initparam$bgn <- bgn
-  initparam$n <- n
-  initparam$nsmall <- n - bgn
-  
-  if (is.null(nodeslabels)) {
-    if (all(is.character(colnames(data)))) {
-      nodeslabels <- colnames(data)
-    }
-    else {
-      nodeslabels <- sapply(c(1:n), function(x) paste("v", 
-                                                      x, sep = ""))
-    }
-  }
-  colnames(data) <- nodeslabels
-  initparam$labels <- nodeslabels
-  initparam$labels.short <- initparam$labels
-  initparam$data <- data
-  
-  if (is.null(edgepmat)) {
-    initparam$logedgepmat <- NULL
-  }
-  else {
-    if (all(edgepmat > 0)) {
-      initparam$logedgepmat <- log(edgepmat)
-    }
-    else stop("all entries of edgepmat matrix must be bigger than 0! 1 corresponds to no penalization")
-  }
-  
-  if (is.null(bgepar$am)) {
-    bgepar$am <- 1
-  }
-  if (is.null(bgepar$aw)) {
-    bgepar$aw <- n + bgepar$am + 1
-  }
-  if (is.null(bgepar$T0scale)) {
-    bgepar$T0scale <- bgepar$am * (bgepar$aw - n - 1)/(bgepar$am + 1)
-  }
-  if (is.null(bgepar$edgepf)) {
-    bgepar$edgepf <- 1
-  }
-  
-  initparam$am <- bgepar$am
-  initparam$aw <- bgepar$aw
-  initparam$pf <- bgepar$edgepf
-  initparam$N <- N
-  
-  
-  mu0 <- numeric(n)
-  T0 <- diag(bgepar$T0scale, n, n)
-  K = ncol(membershipp)
-  Nk <- numeric(K)
-  means <- vector("list", K)
-  TN <- vector("list", K)
-  awpN <- numeric(K)
-  constscorefact <- numeric(K)
-  muN <- vector("list", K)
-  SigmaN <- vector("list", K)
-  for (k in  1:K){
-    weightvector = membershipp[,k]
-    Nk[k] <- sum(weightvector)
-    forcov <- cov.wt(data, wt = weightvector, cor = TRUE, 
-                     method = "ML")
-    covmatk <- forcov$cov * Nk[k]
-    means[[k]] <- forcov$center
-    TN[[k]] <- T0 + covmatk + 
-      ((bgepar$am * Nk[k])/(bgepar$am + Nk[k])) * 
-      (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
-    awpN[k] = bgepar$aw + Nk[k]
-    constscorefact[k] =  (1/2) * log(bgepar$am/(bgepar$am + Nk[k]))
-    muN[[k]] <- (Nk[k] * means[[k]] + bgepar$am * mu0)/(Nk[k] + bgepar$am)
-    SigmaN[[k]] <- TN[[k]]/(awpN[k] - n - 1)
-  }
-  
-  initparam$means <- means
-  initparam$TN <- TN
-  initparam$awpN <- awpN
-  initparam$muN <- muN
-  initparam$SigmaN <- SigmaN
-  
-  
-  initparam$scoreconstvec <- numeric(n)
-  for (j in (1:n)) {
-    awp <- bgepar$aw - n + j
-    initparam$scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
-      sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(bgepar$T0scale) - 
-      j * log(initparam$pf)
-  }
-  
-  attr(initparam, "class") <- "scoreparameters"
-  return(initparam)
-}
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
@@ -233,12 +116,79 @@ usrscoreparameters <- function(initparam,
   
   initparam
 }
-
+usrDAGcorescore <- function (j, parentnodes, n, param) {
+  K=param$K
+  TN <- param$TN
+  awpN <- param$awpN
+  scoreconstvec <- param$scoreconstvec
+  lp <- length(parentnodes)
+  awpNd2 <- (awpN - n + lp + 1)/2
+  A <- sapply(TN, function(m) m[j, j])
+  
+  
+  switch(as.character(lp), 
+         `0` = {
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * log(A))
+  }, 
+  `1` = {
+    D <- sapply(TN, function(m) m[parentnodes, parentnodes])
+    logdetD <- log(D)
+    B <- sapply(TN, function(m) m[j, parentnodes])
+    logdetpart2 <- log(A - B^2/D)
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+      sum(logdetD)/2
+    if (!is.null(param$logedgepmat)) {
+      corescore <- corescore - param$logedgepmat[parentnodes, 
+                                                 j]
+    }
+  }, 
+  `2` = {
+    D <- lapply(TN, function(m) m[parentnodes, parentnodes, drop = FALSE])
+    detD <- sapply(D, function(m) dettwobytwo(m))
+    logdetD <- log(detD)
+    B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+    logdetpart2 <- vapply(seq_along(D), function(k) {
+      Ak <- A[k]
+      Bk <- matrix(B[[k]], nrow = 1)            # 1x2
+      Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        # 2x2
+      log(dettwobytwo(Mk)) + log(Ak) - logdetD[k]
+    }, numeric(1))
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+      sum(logdetD)/2
+    if (!is.null(param$logedgepmat)) {
+      corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                     j])
+    }
+  }, 
+  {
+    D <- lapply(TN, function(m) as.matrix(m[parentnodes, parentnodes, drop = FALSE]))
+    choltemp <- lapply(D, function(m) chol(m))
+    logdetD <- vapply(seq_along(TN), function(k) {
+      2 * sum(log(diag(choltemp[[k]])))
+    }, numeric(1))
+    B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+    logdetpart2 <- vapply(seq_along(TN), function(k) {
+      val <- log(A[k] - sum(backsolve(choltemp[[k]], t(B[[k]]), transpose=TRUE)^2))
+    }, numeric(1))
+    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+      sum(logdetD)/2
+    if (!is.null(param$logedgepmat)) {
+      corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                     j])
+    }
+  })
+  
+  corescore
+}
 #----------------------  functions ----------------------------------
 # replace BIDAG functions
 unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
 assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))
 lockBinding("usrscoreparameters", asNamespace("BiDAG"))
+
+unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
+lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 
 child = "x5"
 parents_list <- list(
@@ -275,16 +225,8 @@ dp <- Fit(dp, 10)
 print(dp$numberClusters)
 Gamma <- dp_membership_probs(dp)
 
-bgepar = list(am = alpha_mu, aw = alpha_w, T0scale = t, edgepf = 1)
-score_dp = dp_bge(data, 
-                  membershipp=Gamma,
-                  bgepar = bgepar,
-                  bgnodes = NULL, 
-                  edgepmat = NULL, 
-                  nodeslabels = NULL)
-
-usr_score <- BiDAG::scoreparameters(scoretype = "usr", 
-                             data = data, 
+usr_score_param <- BiDAG::scoreparameters(scoretype = "usr", 
+                             data = dp_data, 
                              usrpar = list(pctesttype = "bge",
                                            membershipp = Gamma,
                                            am = alpha_mu, 
@@ -293,3 +235,5 @@ usr_score <- BiDAG::scoreparameters(scoretype = "usr",
                                            edgepf = 1
                              )
 )
+
+usr_dag_score <- BiDAG::DAGscore(usr_score_param, dp_data)
