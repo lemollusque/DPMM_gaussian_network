@@ -18,7 +18,12 @@ x5 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 
 data <- data.frame(x1, x2, x3, x4, x5)
 
-
+score_dp = dp_bge(data, 
+        membershipp=Gamma,
+        bgepar = bgepar,
+        bgnodes = NULL, 
+        edgepmat = NULL, 
+        nodeslabels = NULL)
 #---------------------- functions ----------------------------------
 dp_membership_probs <- function(dp) {
   y <- dp$data
@@ -39,7 +44,6 @@ dp_membership_probs <- function(dp) {
 }
 dp_bge = function(data, 
                   membershipp,
-                  child, pax, 
                   bgepar = list(am = 1, 
                                 aw = NULL, 
                                 T0scale = NULL, 
@@ -49,6 +53,9 @@ dp_bge = function(data,
                   nodeslabels = NULL){ 
   
   initparam <- list()
+  initparam$type <- "usr"
+  initparam$MDAG <- FALSE
+  initparam$DBN <- FALSE
   
   N = nrow(data)
   n = ncol(data)
@@ -148,6 +155,7 @@ dp_bge = function(data,
       sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(bgepar$T0scale) - 
       j * log(initparam$pf)
   }
+  
   attr(initparam, "class") <- "scoreparameters"
   return(initparam)
 }

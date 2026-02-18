@@ -759,9 +759,14 @@ bidag_usrDAGcorescore = function (j, parentnodes, n, param)
 bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr"), data, 
                       bgepar = list(am = 1, aw = NULL, edgepf = 1), 
                       dbnpar = list(samestruct = TRUE, slices = 2, b = 0, stationary = TRUE, 
-                                    rowids = NULL, datalist = NULL, learninit = TRUE), usrpar = list(pctesttype = c("bge", 
-                                                                                                                    "bde", "bdecat")), mixedpar = list(nbin = 0), MDAG = FALSE, 
-                      DBN = FALSE, weightvector = NULL, bgnodes = NULL, edgepmat = NULL, 
+                                    rowids = NULL, datalist = NULL, learninit = TRUE), 
+                      usrpar = list(pctesttype = c("bge", "bde", "bdecat")), 
+                      mixedpar = list(nbin = 0), 
+                      MDAG = FALSE, 
+                      DBN = FALSE, 
+                      weightvector = NULL, 
+                      bgnodes = NULL, 
+                      edgepmat = NULL, 
                       nodeslabels = NULL) 
 {
   initparam <- list()
@@ -797,9 +802,6 @@ bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr
   }
   else n <- ncol(data)
   nsmall <- n - bgn
-  if (!(scoretype %in% c("bge", "bde", "bdecat", "usr", "mixed"))) {
-    stop("Scoretype should be bge (for continuous data), bde (for binary data) bdecat (for categorical data) or usr (for user defined)")
-  }
   if (!DBN) {
     if (anyNA(data)) {
       stop("Dataset contains missing data")
@@ -820,20 +822,6 @@ bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr
   if (!is.null(weightvector)) {
     if (length(weightvector) != nrow(data)) {
       stop("Length of the weightvector does not match the number of rows (observations) in data")
-    }
-  }
-  if (scoretype == "bde") {
-    if (!all(sapply(data, function(x) x %in% c(0, 1, NA)))) {
-      stop("Dataset contains non-binary values")
-    }
-  }
-  if (scoretype == "bdecat") {
-    indx <- sapply(data, is.factor)
-    data[indx] <- lapply(data[indx], function(x) as.numeric(x) - 
-                           1)
-    if (!all(unlist(lapply(data, function(x) setequal(unique(x), 
-                                                      c(0:max(x))))))) {
-      stop("Some variable levels are not present in the data")
     }
   }
   if (is.null(nodeslabels)) {
@@ -1120,13 +1108,12 @@ bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr
         cat(paste(lNA, "rows were removed due to missing data"), 
             "\n")
       }
-      initparam$firstslice <- scoreparameters(scoretype = scoretype, 
+      initparam$firstslice <- scoreparameters(scoretype = "bge", 
                                               datalocal, weightvector = weightvector, bgnodes = newbgnodes, 
-                                              bgepar = bgepar, bdepar = bdepar, bdecatpar = bdecatpar, 
                                               dbnpar = dbnpar, edgepmat = edgepmatfirst, DBN = FALSE)
     }
   }
-  else if (scoretype == "bge") {
+  else {
     if (is.null(bgepar$am)) {
       bgepar$am <- 1
     }
@@ -1173,62 +1160,7 @@ bidag_bge_scoreparameters = function (scoretype = c("bge", "bde", "bdecat", "usr
         j * log(initparam$pf)
     }
   }
-  else if (scoretype == "bde") {
-    if (is.null(bdepar$chi)) {
-      bdepar$chi <- 0.5
-    }
-    if (is.null(bdepar$edgepf)) {
-      bdepar$edgepf <- 2
-    }
-    if (is.null(weightvector)) {
-      initparam$N <- nrow(data)
-      initparam$d1 <- data
-      initparam$d0 <- (1 - data)
-    }
-    else {
-      initparam$N <- sum(weightvector)
-      initparam$d1 <- data * weightvector
-      initparam$d0 <- (1 - data) * weightvector
-    }
-    maxparents <- n - 1
-    initparam$scoreconstvec <- rep(0, maxparents + 1)
-    initparam$chi <- bdepar$chi
-    initparam$pf <- bdepar$edgepf
-    for (i in 0:maxparents) {
-      noparams <- 2^i
-      initparam$scoreconstvec[i + 1] <- noparams * lgamma(initparam$chi/noparams) - 
-        2 * noparams * lgamma(initparam$chi/(2 * noparams)) - 
-        i * log(initparam$pf)
-    }
-  }
-  else if (scoretype == "bdecat") {
-    if (is.null(bdecatpar$chi)) {
-      bdecatpar$chi <- 0.5
-    }
-    if (is.null(bdecatpar$edgepf)) {
-      bdecatpar$edgepf <- 2
-    }
-    maxparents <- n - 1
-    initparam$chi <- bdecatpar$chi
-    initparam$pf <- bdecatpar$edgepf
-    initparam$scoreconstvec <- -c(0:maxparents) * log(initparam$pf)
-    initparam$Cvec <- apply(initparam$data, 2, max) + 1
-  }
-  else if (scoretype == "usr") {
-    if (is.null(usrpar$pctesttype)) {
-      usrpar$pctesttype <- "usr"
-    }
-    initparam$pctesttype <- usrpar$pctesttype
-    initparam <- usrscoreparameters(initparam, usrpar)
-  }
-  else if (scoretype == "mixed") {
-    initparam$nbin <- mixedpar$nbin
-    initparam$binpar <- scoreparameters("bde", data[, 1:mixedpar$nbin], 
-                                        bdepar = bdepar, nodeslabels = nodeslabels[1:mixedpar$nbin], 
-                                        weightvector = weightvector)
-    initparam$gausspar <- scoreparameters("bge", data, bgnodes = c(1:mixedpar$nbin), 
-                                          bgepar = bgepar, nodeslabels = nodeslabels, weightvector = weightvector)
-  }
+  
   attr(initparam, "class") <- "scoreparameters"
   return(initparam)
 }
