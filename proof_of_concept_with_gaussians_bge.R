@@ -165,7 +165,6 @@ usrscoreparameters <- function(initparam,
                                              )
                                        ) 
 {
-  cat(">>> my usrscoreparameters called\n")
   if (is.null(usrpar$membershipp)) stop("Gamma (membershipp) is missing")
   if (is.null(usrpar$edgepf)) {
     usrpar$edgepf <- 1
@@ -179,16 +178,12 @@ usrscoreparameters <- function(initparam,
   if (is.null(usrpar$T0scale)) {
     usrpar$T0scale <- usrpar$am * (usrpar$aw - initparam$n - 1)/(usrpar$am + 1)
   }
-  if (is.null(usrpar$edgepf)) {
-    usrpar$edgepf <- 1
-  }
   
   initparam$pf <- usrpar$edgepf
   initparam$am <- usrpar$am
   initparam$aw <- usrpar$aw
   initparam$pf <- usrpar$edgepf
   
-  N = nrow(initparam$data)
   mu0 <- numeric(initparam$n)
   T0 <- diag(usrpar$T0scale, initparam$n, initparam$n)
   K = ncol(usrpar$membershipp)
@@ -202,8 +197,7 @@ usrscoreparameters <- function(initparam,
   for (k in  1:K){
     weightvector = usrpar$membershipp[,k]
     Nk[k] <- sum(weightvector)
-    forcov <- cov.wt(initparam$data, wt = weightvector, cor = TRUE, 
-                     method = "ML")
+    forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
     covmatk <- forcov$cov * Nk[k]
     means[[k]] <- forcov$center
     TN[[k]] <- T0 + covmatk + 
@@ -215,6 +209,7 @@ usrscoreparameters <- function(initparam,
     SigmaN[[k]] <- TN[[k]]/(awpN[k] - initparam$n - 1)
   }
   
+  N <- sum(Nk)
   initparam$means <- means
   initparam$TN <- TN
   initparam$awpN <- awpN
