@@ -144,14 +144,14 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   }, 
   `2` = {
     D <- lapply(TN, function(m) m[parentnodes, parentnodes, drop = FALSE])
-    detD <- sapply(D, function(m) dettwobytwo(m))
+    detD <- sapply(D, function(m) BiDAG:::dettwobytwo(m))
     logdetD <- log(detD)
     B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
     logdetpart2 <- vapply(seq_along(D), function(k) {
       Ak <- A[k]
-      Bk <- matrix(B[[k]], nrow = 1)            # 1x2
-      Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        # 2x2
-      log(dettwobytwo(Mk)) + log(Ak) - logdetD[k]
+      Bk <- matrix(B[[k]], nrow = 1)            
+      Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        
+      log(BiDAG:::dettwobytwo(Mk)) + log(Ak) - logdetD[k]
     }, numeric(1))
     corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
       sum(logdetD)/2
@@ -190,6 +190,8 @@ unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
 lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 
+
+vars  <- c("x1","x2","x3","x4","x5")
 child = "x5"
 parents_list <- list(
   c(),
@@ -236,4 +238,30 @@ usr_score_param <- BiDAG::scoreparameters(scoretype = "usr",
                              )
 )
 
-usr_dag_score <- BiDAG::DAGscore(usr_score_param, dp_data)
+########################### score a DAG (check equivalence) ##################
+
+A_12 <- matrix(c(
+  0, 1, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0
+), nrow = 5, byrow = TRUE,
+dimnames = list(vars, vars))
+
+A_21 <- matrix(c(
+  1, 0, 0, 0, 0,
+  1, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0
+), nrow = 5, byrow = TRUE,
+dimnames = list(vars, vars))
+
+dags <- list(
+  A_12,
+  A_21
+)
+
+usr_dag_score <- BiDAG::DAGscore(usr_score_param, A_21)
+usr_dag_score
