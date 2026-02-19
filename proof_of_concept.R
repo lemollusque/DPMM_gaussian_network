@@ -25,166 +25,170 @@ data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T)
 vars  <- c("x1","x2","x3","x4")
 colnames(data) = vars
 
-
 #---------------------- functions ----------------------------------
-loglik_cond_component_dp <- function(dp_data, mu, Sigma) { 
-  y <- dp_data[,1] #child node is in the first column
-  X <- as.matrix(dp_data[,-1, drop=FALSE]) #parents
-  
-  mu_y <- mu[1]
-  mu_x <- mu[-1]
-  
-  S_yy <- Sigma[1,1]
-  S_yx <- Sigma[1,-1, drop=FALSE]  
-  S_xy <- Sigma[-1,1, drop=FALSE]   
-  S_xx <- Sigma[-1,-1, drop=FALSE] 
-  
-  # Cholesky of S_xx 
-  L = t(base::chol(S_xx))
-  
-  #conditional distr (mu and Sigma)
-  w <- forwardsolve(L, t(X) - mu_x)
-  z = backsolve(t(L), w)
-  mu_cond = drop(mu_y + S_yx %*% z)
-  
-  W <- forwardsolve(L, S_xy)
-  Z = backsolve(t(L), W)
-  S_cond = S_yy - as.numeric(S_yx %*% Z)
-  
-  # log density
-  dnorm(y, mean = mu_cond, sd = sqrt(S_cond), log = TRUE)
+dp_membership_probs <- function(dp) {
+  y <- dp$data
+  N <- nrow(y)
+  clusterParams <- dp$clusterParameters
+  numLabels <- dp$numberClusters
+  mdObj <- dp$mixingDistribution
+  pointsPerCluster <- dp$pointsPerCluster
+  probs <- matrix(0, nrow = N, ncol = numLabels)
+  for (i in seq_len(N)) {
+    probs[i, 1:numLabels] <- pointsPerCluster * 
+      dirichletprocess:::Likelihood.mvnormal(mdObj, 
+                                             y[i,, drop = FALSE], 
+                                             clusterParams)
+  }
+  probs <- probs / rowSums(probs)
+  return(probs)
 }
-
-dp_ll = function(dp, child, pax){ 
-  dp_data=dp$data
-  pis <- dp$weights  
-  K <- length(pis)                
-  mus    <- dp$clusterParameters$mu         
-  Sigmas <- dp$clusterParameters$sig  
-  
-  
-  
-  n <- nrow(dp_data)
-  vars <- c(child, pax)
-  d <- length(vars)    
-  pos  <- match(vars, colnames(dp_data))
-  child_parent_data = dp_data[,pos]
-  
-  # initiate ll
-  ll_mat <- matrix(NA_real_, nrow = n, ncol = K)
-  for (k in 1:K) {
-    # cluster params
-    mu_k = mus[, , k]
-    child_parent_mu = mu_k[pos]
-    Sigma_k = Sigmas[, , k]
-    child_parent_Sigma = Sigma_k[pos,pos, drop=FALSE]
-    
-    if (length(pax) < 1){
-      ll_mat[, k] <- log(pis[k]) + dnorm(child_parent_data, mean = child_parent_mu, sd = sqrt(child_parent_Sigma), log = TRUE)
-    }
-    else{
-      
-      ll_mat[, k] <- log(pis[k]) + loglik_cond_component_dp(child_parent_data, child_parent_mu, child_parent_Sigma)
-      
-    }
-    
+#----------------------  BiDAG ----------------------------------
+usrscoreparameters <- function(initparam, 
+                               usrpar = list(pctesttype = "bge",
+                                             membershipp = NULL,
+                                             am = 1, 
+                                             aw = NULL, 
+                                             T0scale = NULL,
+                                             edgepf = 1
+                               )
+) 
+{
+  if (is.null(usrpar$membershipp)) stop("Gamma (membershipp) is missing")
+  if (is.null(usrpar$edgepf)) {
+    usrpar$edgepf <- 1
+  }
+  if (is.null(usrpar$am)) {
+    usrpar$am <- 1
+  }
+  if (is.null(usrpar$aw)) {
+    usrpar$aw <- initparam$n + usrpar$am + 1
+  }
+  if (is.null(usrpar$T0scale)) {
+    usrpar$T0scale <- usrpar$am * (usrpar$aw - initparam$n - 1)/(usrpar$am + 1)
+  }
+  if (is.null(usrpar$edgepmat)) {
+    initparam$logedgepmat <- NULL
+  }
+  else {
+    initparam$logedgepmat <- log(usrpar$edgepmat)
   }
   
-  # total log-likelihood
-  m <- apply(ll_mat, 1, max)
-  ll = sum(m + log(rowSums(exp(ll_mat - m))))
+  initparam$pf <- usrpar$edgepf
+  initparam$am <- usrpar$am
+  initparam$aw <- usrpar$aw
+  initparam$pf <- usrpar$edgepf
   
-  # define bic         
-  k_cond <- length(pax)*K
-  bic <- -2 * ll + k_cond * log(n)
-  
-  list(ll = ll, bic = bic)
-}
-
-cov_ll = function(dp_data, child, pax){   
-  n <- nrow(dp_data)
-  vars <- c(child, pax)
-  d <- length(vars)    
-  pos  <- match(vars, colnames(dp_data))
-  
-  mu    <- colMeans(dp_data)        
-  Sigma <- cov(dp_data) * (n - 1) / n
-  
-  child_parent_data = dp_data[,pos]
-  child_parent_mu = mu[pos]
-  child_parent_Sigma = Sigma[pos,pos, drop=FALSE]
-  
-  # initiate ll
-  ll_mat <- matrix(NA_real_, nrow = n, ncol = 1)
-  
-  if (length(pax) < 1){
-    ll_mat[, 1] <- dnorm(child_parent_data, mean = child_parent_mu, sd = sqrt(child_parent_Sigma), log = TRUE)
-  }
-  else{
-    ll_mat[, 1] <- loglik_cond_component_dp(child_parent_data, child_parent_mu, child_parent_Sigma)
+  mu0 <- numeric(initparam$n)
+  T0 <- diag(usrpar$T0scale, initparam$n, initparam$n)
+  K = ncol(usrpar$membershipp)
+  Nk <- numeric(K)
+  means <- vector("list", K)
+  TN <- vector("list", K)
+  awpN <- numeric(K)
+  constscorefact <- numeric(K)
+  muN <- vector("list", K)
+  SigmaN <- vector("list", K)
+  for (k in  1:K){
+    weightvector = usrpar$membershipp[,k]
+    Nk[k] <- sum(weightvector)
+    forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
+    covmatk <- forcov$cov * Nk[k]
+    means[[k]] <- forcov$center
+    TN[[k]] <- T0 + covmatk + 
+      ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
+      (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+    awpN[k] = usrpar$aw + Nk[k]
+    constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
+    muN[[k]] <- (Nk[k] * means[[k]] + usrpar$am * mu0)/(Nk[k] + usrpar$am)
+    SigmaN[[k]] <- TN[[k]]/(awpN[k] - initparam$n - 1)
   }
   
-  # total log-likelihood
-  m <- apply(ll_mat, 1, max)
-  ll = sum(m + log(rowSums(exp(ll_mat - m))))
+  N <- sum(Nk)
+  initparam$K <- K
+  initparam$means <- means
+  initparam$TN <- TN
+  initparam$awpN <- awpN
+  initparam$muN <- muN
+  initparam$SigmaN <- SigmaN
   
-  # define bic         
-  k_cond <- length(pax)
-  bic <- -2 * ll + k_cond * log(n)
-  
-  list(ll = ll, bic = bic)
-}
-#---------------------------- avg dp functions ----------------------------
-add_dp <- function(dp_list, dp, child, parents) {
-  dp_list[[length(dp_list) + 1]] <- list(
-    dp = dp,
-    child = child,
-    parents = parents,
-    vars = c(child, parents) 
-  )
-  dp_list
-}
-
-find_dps <- function(dp_list, child, parents) {
-  needed <- c(child, parents)
-  Filter(function(e) all(needed %in% e$vars), dp_list)
-}
-
-average_dp_ll = function(dp_list, child, pax){ 
-  list_bic = list()
-  for (i in 1:length(dp_list)){
-    dp = dp_list[[i]]$dp
-    
-    # loglikelihood
-    score = dp_ll(dp, child, pax)
-    list_bic[[i]] <- score$bic
+  initparam$scoreconstvec <- numeric(initparam$n)
+  for (j in (1:initparam$n)) {
+    awp <- usrpar$aw - initparam$n + j
+    initparam$scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
+      sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
+      j * log(initparam$pf)
   }
-  bics = unlist(list_bic)
-  log_evid <- -0.5 * bics
   
-  m <- max(log_evid)
-  log_mean_evid <- m + log(mean(exp(log_evid - m)))
-  
-  -2 * log_mean_evid
-  
+  initparam
 }
-
-score_a_dag = function(adj_mat, dp_list){
-  vars = colnames(adj_mat)
-  local_scores <- numeric(length(vars))
-  names(local_scores) <- vars
-  for (child in vars){
-    pax = names(adj_mat[,child][which(adj_mat[,child] == 1)])
-    
-    hits <- find_dps(dp_list, child, pax)
-    
-    # bic
-    local_scores[child] = average_dp_ll(hits, child, pax)
-  }
-  sum(local_scores)
+usrDAGcorescore <- function (j, parentnodes, n, param) {
+  K=param$K
+  TN <- param$TN
+  awpN <- param$awpN
+  scoreconstvec <- param$scoreconstvec
+  lp <- length(parentnodes)
+  awpNd2 <- (awpN - n + lp + 1)/2
+  A <- sapply(TN, function(m) m[j, j])
+  
+  
+  switch(as.character(lp), 
+         `0` = {
+           corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * log(A))
+         }, 
+         `1` = {
+           D <- sapply(TN, function(m) m[parentnodes, parentnodes])
+           logdetD <- log(D)
+           B <- sapply(TN, function(m) m[j, parentnodes])
+           logdetpart2 <- log(A - B^2/D)
+           corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+             sum(logdetD)/2
+           if (!is.null(param$logedgepmat)) {
+             corescore <- corescore - param$logedgepmat[parentnodes, 
+                                                        j]
+           }
+         }, 
+         `2` = {
+           D <- lapply(TN, function(m) m[parentnodes, parentnodes, drop = FALSE])
+           detD <- sapply(D, function(m) BiDAG:::dettwobytwo(m))
+           logdetD <- log(detD)
+           B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+           logdetpart2 <- vapply(seq_along(D), function(k) {
+             Ak <- A[k]
+             Bk <- matrix(B[[k]], nrow = 1)            
+             Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        
+             log(BiDAG:::dettwobytwo(Mk)) + log(Ak) - logdetD[k]
+           }, numeric(1))
+           corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+             sum(logdetD)/2
+           if (!is.null(param$logedgepmat)) {
+             corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                            j])
+           }
+         }, 
+         {
+           D <- lapply(TN, function(m) as.matrix(m[parentnodes, parentnodes, drop = FALSE]))
+           choltemp <- lapply(D, function(m) chol(m))
+           logdetD <- vapply(seq_along(TN), function(k) {
+             2 * sum(log(diag(choltemp[[k]])))
+           }, numeric(1))
+           B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+           logdetpart2 <- vapply(seq_along(TN), function(k) {
+             val <- log(A[k] - sum(backsolve(choltemp[[k]], t(B[[k]]), transpose=TRUE)^2))
+           }, numeric(1))
+           corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+             sum(logdetD)/2
+           if (!is.null(param$logedgepmat)) {
+             corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                            j])
+           }
+         })
+  
+  corescore
 }
 #----------------------  test functions ----------------------------------
-test_dag_score_equivalence <- function(dags, dp_list,
+test_dag_score_equivalence <- function(usr_score_param,
+                                       dags, 
                                        tol = 1e-4,
                                        verbose = TRUE) {
   if (is.null(names(dags)) || any(names(dags) == "")) {
@@ -192,7 +196,7 @@ test_dag_score_equivalence <- function(dags, dp_list,
   }
   
   # score all dags
-  scores <- unlist(lapply(dags, function(A) score_a_dag(A, dp_list)))
+  scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(usr_score_param, A)))
   
   # pairwise differences
   diffs <- outer(scores, scores, FUN = "-")
@@ -210,18 +214,54 @@ test_dag_score_equivalence <- function(dags, dp_list,
   all_equal
 }
 #----------------------  functions ----------------------------------
+# replace BIDAG functions
+unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
+assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))
+lockBinding("usrscoreparameters", asNamespace("BiDAG"))
 
-# List all DAGs with n nodes
+unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
+lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 
-dp_list <- list()
-for (child in vars){
-  parents <- vars[vars != child]
-  dp_data = scale(data[,c(child, parents)]) 
-  n_iter = 200
-  dp <- DirichletProcessMvnormal(dp_data)
-  dp <- Fit(dp, n_iter)
-  dp_list <- add_dp(dp_list, dp, child=child, parents=parents)
-}
+
+# perform DPMM on all parents
+dp_data = scale(data) 
+n_iter = 10
+
+# Initiate params for DP and BGe
+n <- ncol(data)
+alpha_mu <- 1          
+alpha_w  <- n + alpha_mu + 1      
+t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
+
+# DP
+g0Priors <- list(
+  mu0    = rep(0, n),
+  Lambda = diag(n) / t,   # T = (1/t) I
+  kappa0 = alpha_mu,
+  nu     = alpha_w
+)
+dp <- DirichletProcessMvnormal(dp_data, g0Priors)
+
+# scoring
+set.seed(12) # to test multiple clusters
+dp <- Fit(dp, 10)
+print(dp$numberClusters)
+Gamma <- dp_membership_probs(dp)
+usr_score_param <- BiDAG::scoreparameters(scoretype = "usr", 
+                                          data = dp_data, 
+                                          usrpar = list(pctesttype = "bge",
+                                                        membershipp = Gamma,
+                                                        am = alpha_mu, 
+                                                        aw = alpha_w, 
+                                                        T0scale = t,
+                                                        edgepf = 1
+                                          )
+)
+
+
+
+############################### compare all dags ##############################
 # List all DAGs with n nodes
 all.dags <- list()
 adj <- matrix(0, nrow = n, ncol = n,
@@ -239,16 +279,19 @@ for(i in 1:nrow(all.comb)) {
   }
 }
 
+# Compute true posterior (and save all scores)
+true.post <- rep(NA, dag.counter)
 
-scores <- rep(NA, dag.counter)
 for(d in 1:dag.counter) {
   print(d)
   dag <- all.dags[[d]]
-  scores[d] = score_a_dag(dag, dp_list)
+  true.post[d] = BiDAG::DAGscore(usr_score_param, dag)
 }
-
-
-true.p <- exp(-0.5*scores - logSumExp(-0.5*scores))
+# Order true posterior
+true.order <- order(true.post, decreasing = T)
+true.post <- true.post[true.order]
+true.p <- exp(true.post - logSumExp(true.post))
+all.dags <- all.dags[true.order]
 
 
 #compute shd for every graph
@@ -262,10 +305,16 @@ for(k in 1:dag.counter) {
   count_edges[k] = sum(dag)
 }
 shd.order =  order(shd, decreasing = F) 
-a <- scores[shd.order]
+a <- true.post[shd.order]
 b <- true.p[shd.order]
 
 
 par(mfrow = c(2,1))
-plot(a, type="l", ylab="score")
+plot(a, type="l", ylab="posterior")
 plot(b, type="l", ylab="softmax")
+
+
+
+
+top5_idx <- order(true.post, decreasing = T)[1:5]
+all.dags[top5_idx]

@@ -13,11 +13,9 @@ N <- 100  # number of samples
 x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
 x2 <- rnorm(N, mean=sample(1:10)[1], sd=1)
 x3 <- rnorm(N, mean=sample(1:10)[1], sd=1)
-x4 <- rnorm(N, mean=sample(1:10)[1], sd=1)
-x5 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
+x4 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 
-data <- data.frame(x1, x2, x3, x4, x5)
-
+data <- data.frame(x1, x2, x3, x4)
 
 #---------------------- functions ----------------------------------
 dp_membership_probs <- function(dp) {
@@ -180,6 +178,33 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   
   corescore
 }
+#----------------------  test functions ----------------------------------
+test_dag_score_equivalence <- function(usr_score_param,
+                                       dags, 
+                                       tol = 1e-4,
+                                       verbose = TRUE) {
+  if (is.null(names(dags)) || any(names(dags) == "")) {
+    names(dags) <- paste0("DAG_", seq_along(dags))
+  }
+  
+  # score all dags
+  scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(usr_score_param, A)))
+  
+  # pairwise differences
+  diffs <- outer(scores, scores, FUN = "-")
+  
+  # pass/fail: all equal within tol?
+  all_equal <- max(abs(diffs)) < tol
+  
+  if (verbose) {
+    cat("Total scores:\n")
+    print(scores)
+    cat("\nMax |pairwise diff|:", max(abs(diffs)), "\n")
+    cat("All equal?", all_equal, "\n\n")
+  }
+  
+  all_equal
+}
 #----------------------  functions ----------------------------------
 # replace BIDAG functions
 unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
@@ -190,29 +215,17 @@ unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
 lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 
-
-vars  <- c("x1","x2","x3","x4","x5")
-child = "x5"
-parents_list <- list(
-  c(),
-  c("x1"),
-  c("x2"),
-  c("x1","x2"),
-  c("x1","x2","x3"),
-  c("x1","x2","x4"),
-  c("x1","x2","x3","x4")
-)
-possible_parents= sort(unique(unlist(parents_list)))
 # perform DPMM on all parents
-dp_data = scale(data[,c(child, possible_parents)]) 
+dp_data = scale(data) 
 n_iter = 10
-# TODO default params:
+
+# Initiate params for DP and BGe
 n <- ncol(data)
 alpha_mu <- 1          
 alpha_w  <- n + alpha_mu + 1      
-
 t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
 
+# DP
 g0Priors <- list(
   mu0    = rep(0, n),
   Lambda = diag(n) / t,   # T = (1/t) I
@@ -221,12 +234,11 @@ g0Priors <- list(
 )
 dp <- DirichletProcessMvnormal(dp_data, g0Priors)
 
-# to test multiple clusters
-set.seed(12)
+# scoring
+set.seed(12) # to test multiple clusters
 dp <- Fit(dp, 10)
 print(dp$numberClusters)
 Gamma <- dp_membership_probs(dp)
-
 usr_score_param <- BiDAG::scoreparameters(scoretype = "usr", 
                              data = dp_data, 
                              usrpar = list(pctesttype = "bge",
@@ -239,23 +251,22 @@ usr_score_param <- BiDAG::scoreparameters(scoretype = "usr",
 )
 
 ########################### score a DAG (check equivalence) ##################
+vars  <- c("x1","x2","x3","x4")
 
 A_12 <- matrix(c(
-  0, 1, 0, 0, 0,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0
-), nrow = 5, byrow = TRUE,
+  0, 1, 0, 0,
+  0, 0, 0, 0,
+  0, 0, 0, 0,
+  0, 0, 0, 0
+), nrow = 4, byrow = TRUE,
 dimnames = list(vars, vars))
 
 A_21 <- matrix(c(
-  1, 0, 0, 0, 0,
-  1, 0, 0, 0, 0,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0
-), nrow = 5, byrow = TRUE,
+  0, 0, 0, 0,
+  1, 0, 0, 0,
+  0, 0, 0, 0,
+  0, 0, 0, 0
+), nrow = 4, byrow = TRUE,
 dimnames = list(vars, vars))
 
 dags <- list(
@@ -263,5 +274,125 @@ dags <- list(
   A_21
 )
 
-usr_dag_score <- BiDAG::DAGscore(usr_score_param, A_21)
-usr_dag_score
+res <- test_dag_score_equivalence(usr_score_param, dags)
+res
+
+A1 <- matrix(c(
+  0,1,0,1,
+  0,0,0,1,
+  0,0,0,0,
+  0,0,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A2 <- matrix(c(
+  0,1,0,1,
+  0,0,0,0,
+  0,0,0,0,
+  0,1,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A3 <- matrix(c(
+  0,0,0,1,
+  1,0,0,1,
+  0,0,0,0,
+  0,0,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A4 <- matrix(c(
+  0,0,0,0,
+  1,0,0,1,
+  0,0,0,0,
+  1,0,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+A5 <- matrix(c(
+  0,1,0,0,
+  0,0,0,0,
+  0,0,0,0,
+  1,1,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+
+dags <- list(
+  A1,
+  A2,
+  A3,
+  A4,
+  A5
+)
+
+
+res <- test_dag_score_equivalence(usr_score_param, dags)
+res
+
+
+############################### compare all dags ##############################
+truegraph <- matrix(c(
+  0,0,0,1,
+  0,0,0,1,
+  0,0,0,0,
+  0,0,0,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+# List all DAGs with n nodes
+all.dags <- list()
+adj <- matrix(0, nrow = n, ncol = n,
+              dimnames=list(vars, vars))
+dag.counter <- 0
+all.comb <- rep(list(c(0,1)), n*(n-1))
+all.comb <- expand.grid(all.comb)  # all combinations outside of diagonal of adjacency matrix
+
+for(i in 1:nrow(all.comb)) {
+  adj[col(adj)!=row(adj)] <- as.numeric(all.comb[i, ])
+  
+  if(is.DAG(adj)) {
+    dag.counter <- dag.counter + 1
+    all.dags[[dag.counter]] <- adj
+  }
+}
+
+# Compute true posterior (and save all scores)
+true.post <- rep(NA, dag.counter)
+
+for(d in 1:dag.counter) {
+  print(d)
+  dag <- all.dags[[d]]
+  true.post[d] = BiDAG::DAGscore(usr_score_param, dag)
+}
+# Order true posterior
+true.order <- order(true.post, decreasing = T)
+true.post <- true.post[true.order]
+true.p <- exp(true.post - logSumExp(true.post))
+all.dags <- all.dags[true.order]
+
+
+#compute shd for every graph
+shd <- rep(NA, dag.counter)
+count_edges <- rep(NA, dag.counter)
+for(k in 1:dag.counter) {
+  print(k)
+  dag <- all.dags[[k]]
+  camparison = compareDAGs(dag, truegraph)
+  shd[k] = camparison["SHD"]
+  count_edges[k] = sum(dag)
+}
+shd.order =  order(shd, decreasing = F) 
+a <- true.post[shd.order]
+b <- true.p[shd.order]
+
+
+par(mfrow = c(2,1))
+plot(a, type="l", ylab="posterior")
+plot(b, type="l", ylab="softmax")
+
+
+
+
+top5_idx <- order(true.post, decreasing = T)[1:5]
+all.dags[top5_idx]
