@@ -138,68 +138,78 @@ usrscoreparameters <- function(initparam,
   initparam
 }
 usrDAGcorescore <- function (j, parentnodes, n, param) {
-  K=param$K
-  TN <- param$TN
-  awpN <- param$awpN
-  scoreconstvec <- param$scoreconstvec
+  # not depending on cluster param
   lp <- length(parentnodes)
-  awpNd2 <- (awpN - n + lp + 1)/2
-  A <- sapply(TN, function(m) m[j, j])
   
-  
-  switch(as.character(lp), 
-         `0` = {
-    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * log(A))
-  }, 
-  `1` = {
-    D <- sapply(TN, function(m) m[parentnodes, parentnodes])
-    logdetD <- log(D)
-    B <- sapply(TN, function(m) m[j, parentnodes])
-    logdetpart2 <- log(A - B^2/D)
-    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
-      sum(logdetD)/2
-    if (!is.null(param$logedgepmat)) {
-      corescore <- corescore - param$logedgepmat[parentnodes, 
-                                                 j]
-    }
-  }, 
-  `2` = {
-    D <- lapply(TN, function(m) m[parentnodes, parentnodes, drop = FALSE])
-    detD <- sapply(D, function(m) BiDAG:::dettwobytwo(m))
-    logdetD <- log(detD)
-    B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
-    logdetpart2 <- vapply(seq_along(D), function(k) {
-      Ak <- A[k]
-      Bk <- matrix(B[[k]], nrow = 1)            
-      Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        
-      log(BiDAG:::dettwobytwo(Mk)) + log(Ak) - logdetD[k]
-    }, numeric(1))
-    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
-      sum(logdetD)/2
-    if (!is.null(param$logedgepmat)) {
-      corescore <- corescore - sum(param$logedgepmat[parentnodes, 
-                                                     j])
-    }
-  }, 
-  {
-    D <- lapply(TN, function(m) as.matrix(m[parentnodes, parentnodes, drop = FALSE]))
-    choltemp <- lapply(D, function(m) chol(m))
-    logdetD <- vapply(seq_along(TN), function(k) {
-      2 * sum(log(diag(choltemp[[k]])))
-    }, numeric(1))
-    B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
-    logdetpart2 <- vapply(seq_along(TN), function(k) {
-      val <- log(A[k] - sum(backsolve(choltemp[[k]], t(B[[k]]), transpose=TRUE)^2))
-    }, numeric(1))
-    corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
-      sum(logdetD)/2
-    if (!is.null(param$logedgepmat)) {
-      corescore <- corescore - sum(param$logedgepmat[parentnodes, 
-                                                     j])
-    }
-  })
-  
-  corescore
+  # extract needed score parameters
+  needed <- c(j, parentnodes)
+  scoreparam_list = Filter(function(e) all(param$labels[needed] %in% e$vars), 
+                           param$scoreparam_list)
+  n_score = length(scoreparam_list)
+  corescore_list  <- numeric(n_score)
+  for (s in 1:n_score){
+    scoreparam = scoreparam_list[[s]]
+    K=scoreparam$K
+    TN <- scoreparam$TN
+    awpN <- scoreparam$awpN
+    scoreconstvec <- scoreparam$scoreconstvec
+    awpNd2 <- (awpN - n + lp + 1)/2
+    A <- sapply(TN, function(m) m[j, j])
+    
+    switch(as.character(lp), 
+           `0` = {
+      corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * log(A))
+    }, 
+    `1` = {
+      D <- sapply(TN, function(m) m[parentnodes, parentnodes])
+      logdetD <- log(D)
+      B <- sapply(TN, function(m) m[j, parentnodes])
+      logdetpart2 <- log(A - B^2/D)
+      corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+        sum(logdetD)/2
+      if (!is.null(param$logedgepmat)) {
+        corescore <- corescore - param$logedgepmat[parentnodes, 
+                                                   j]
+      }
+    }, 
+    `2` = {
+      D <- lapply(TN, function(m) m[parentnodes, parentnodes, drop = FALSE])
+      detD <- sapply(D, function(m) BiDAG:::dettwobytwo(m))
+      logdetD <- log(detD)
+      B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+      logdetpart2 <- vapply(seq_along(D), function(k) {
+        Ak <- A[k]
+        Bk <- matrix(B[[k]], nrow = 1)            
+        Mk <- D[[k]] - (t(Bk) %*% Bk) / Ak        
+        log(BiDAG:::dettwobytwo(Mk)) + log(Ak) - logdetD[k]
+      }, numeric(1))
+      corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+        sum(logdetD)/2
+      if (!is.null(param$logedgepmat)) {
+        corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                       j])
+      }
+    }, 
+    {
+      D <- lapply(TN, function(m) as.matrix(m[parentnodes, parentnodes, drop = FALSE]))
+      choltemp <- lapply(D, function(m) chol(m))
+      logdetD <- vapply(seq_along(TN), function(k) {
+        2 * sum(log(diag(choltemp[[k]])))
+      }, numeric(1))
+      B <- lapply(TN, function(m) m[j, parentnodes, drop = FALSE])
+      logdetpart2 <- vapply(seq_along(TN), function(k) {
+        val <- log(A[k] - sum(backsolve(choltemp[[k]], t(B[[k]]), transpose=TRUE)^2))
+      }, numeric(1))
+      corescore <- scoreconstvec[lp + 1] - sum(awpNd2 * logdetpart2) - 
+        sum(logdetD)/2
+      if (!is.null(param$logedgepmat)) {
+        corescore <- corescore - sum(param$logedgepmat[parentnodes, 
+                                                       j])
+      }
+    })
+    corescore_list[s] = corescore
+  }
+  mean(corescore_list)
 }
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
@@ -270,7 +280,7 @@ for (child in vars){
 
 # scoring
 usr_score_param <- BiDAG::scoreparameters(scoretype = "usr", 
-                             data = dp_data, 
+                             data = scaled_data, 
                              usrpar = list(pctesttype = "bge",
                                            membershipp_list = Gamma_list,
                                            am = alpha_mu, 
@@ -357,7 +367,6 @@ dags <- list(
 
 res <- test_dag_score_equivalence(usr_score_param, dags)
 res
-
 
 ############################### compare all dags ##############################
 truegraph <- matrix(c(
