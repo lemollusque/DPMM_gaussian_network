@@ -18,22 +18,35 @@ x4 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 data <- data.frame(x1, x2, x3, x4)
 
 #---------------------- functions ----------------------------------
-dp_membership_probs <- function(dp) {
+dp_membership_probs <- function(dp, n_iter, burnin, L){
+  # define samples to take
+  post_idx <- seq(burnin + 1, n_iter)
+  thin_idx <- round(seq(length(post_idx), 1, length.out = L))
+  sample_idx <- post_idx[thin_idx]
+  
   y <- dp$data
-  N <- nrow(y)
-  clusterParams <- dp$clusterParameters
-  numLabels <- dp$numberClusters
-  mdObj <- dp$mixingDistribution
-  pointsPerCluster <- dp$pointsPerCluster
-  probs <- matrix(0, nrow = N, ncol = numLabels)
-  for (i in seq_len(N)) {
-    probs[i, 1:numLabels] <- pointsPerCluster * 
-      dirichletprocess:::Likelihood.mvnormal(mdObj, 
-                                             y[i,, drop = FALSE], 
-                                             clusterParams)
+  N <- dp$n
+  mdObj <- dp$mixingDistribution # const if updatePrior = FALSE
+  clusterParams_sample = dp$clusterParametersChain[sample_idx]
+  weightsChain_sample = dp$weightsChain[sample_idx]
+  pointsPerCluster_sample <- lapply(weightsChain_sample, function(w) w * N) 
+  
+  
+  probs_list <- vector("list", length(clusterParams_sample))
+  for (l in  1:L){
+    clusterParams = clusterParams_sample[[l]]
+    pointsPerCluster <- pointsPerCluster_sample[[l]]
+    numLabels <- length(pointsPerCluster)
+    probs <- matrix(0, nrow = N, ncol = numLabels)
+    for (i in seq_len(N)) {
+      probs[i, 1:numLabels] <- pointsPerCluster * 
+        dirichletprocess:::Likelihood.mvnormal(mdObj, 
+                                               y[i,, drop = FALSE], 
+                                               clusterParams)
+    }
+    probs_list[[l]] <- probs / rowSums(probs)
   }
-  probs <- probs / rowSums(probs)
-  return(probs)
+  return(probs_list)
 }
 add_membershipp <- function(membershipp_list, membershipp, child, parents) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
@@ -256,7 +269,9 @@ g0Priors <- list(
 )
 
 scaled_data = scale(data) 
-n_iter = 10
+n_iter = 100
+burnin = 30
+L = 10 # sample to takedp, n_iter, burnin, L)
 
 Gamma_list <- list()
 vars  <- c("x1","x2","x3","x4")
@@ -266,8 +281,8 @@ for (child in vars){
   dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
   dp <- Fit(dp, n_iter)
   
-  Gamma <- dp_membership_probs(dp)
-  Gamma_list <- add_membershipp(Gamma_list, Gamma, child=child, parents=parents)
+  Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
+  Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents)
 }
 
 # scoring
@@ -425,3 +440,4 @@ plot(b, type="l", ylab="softmax")
 
 top5_idx <- order(true.post, decreasing = T)[1:5]
 all.dags[top5_idx]
+true.post[top5_idx]
