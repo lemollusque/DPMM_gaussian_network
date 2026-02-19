@@ -38,8 +38,6 @@ dp_membership_probs <- function(dp) {
 add_membershipp <- function(membershipp_list, membershipp, child, parents) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
     membershipp = membershipp,
-    child = child, # maybe remove
-    parents = parents, # maybe remove
     vars = c(child, parents) 
   )
   membershipp_list
@@ -97,8 +95,6 @@ usrscoreparameters <- function(initparam,
     TN <- vector("list", K)
     awpN <- numeric(K)
     constscorefact <- numeric(K)
-    muN <- vector("list", K)
-    SigmaN <- vector("list", K)
     for (k in  1:K){
       weightvector = membershipp[,k]
       Nk[k] <- sum(weightvector)
@@ -110,8 +106,6 @@ usrscoreparameters <- function(initparam,
         (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
       awpN[k] = usrpar$aw + Nk[k]
       constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
-      muN[[k]] <- (Nk[k] * means[[k]] + usrpar$am * mu0)/(Nk[k] + usrpar$am)
-      SigmaN[[k]] <- TN[[k]]/(awpN[k] - initparam$n - 1)
     }
     
     N <- sum(Nk)
@@ -130,8 +124,6 @@ usrscoreparameters <- function(initparam,
       K = K,
       TN = TN,
       awpN = awpN,
-      muN = muN,
-      SigmaN = SigmaN,
       scoreconstvec = scoreconstvec
     )
   }
