@@ -259,6 +259,30 @@ test_dag_score_equivalence <- function(usr_score_param,
   
   all_equal
 }
+test_compare_dp_vs_bge <- function(usr_score_param,
+                                   bge_score_param,
+                                   dags,tol = 1e-4,
+                                   verbose = TRUE) {
+  if (is.null(names(dags)) || any(names(dags) == "")) {
+    names(dags) <- paste0("DAG_", seq_along(dags))
+  }
+  
+  # score all dags
+  scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(usr_score_param, A)))
+  bge_scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(bge_score_param, A)))
+  
+  diffs = scores-bge_scores
+  equal <- max(abs(diffs)) < tol
+  
+  if (verbose) {
+    cat("Total dp scores:\n")
+    print(scores)
+    cat("Total bge scores:\n")
+    print(bge_scores)
+    cat("Equal?", equal, "\n\n")
+  }
+  equal
+}
 #----------------------  functions ----------------------------------
 # replace BIDAG functions
 unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
@@ -285,7 +309,7 @@ g0Priors <- list(
 )
 
 scaled_data = scale(data) 
-n_iter = 100
+n_iter = 50
 burnin = 30
 L = 10 # sample to take
 
@@ -314,6 +338,12 @@ usr_score_param <- BiDAG::scoreparameters(scoretype = "usr",
 )
 
 ########################### score a DAG (check equivalence) ##################
+bge_score_param <- scoreparameters("bge", 
+                             scaled_data, 
+                             bgepar = list(am = alpha_mu, 
+                                           aw = alpha_w, 
+                                           edgepf = 1)
+                             )
 A_12 <- matrix(c(
   0, 1, 0, 0,
   0, 0, 0, 0,
@@ -335,8 +365,10 @@ dags <- list(
   A_21
 )
 
-res <- test_dag_score_equivalence(usr_score_param, dags)
-res
+test_dag_score_equivalence(usr_score_param, dags)
+test_compare_dp_vs_bge(usr_score_param,
+                       bge_score_param,
+                       dags)
 
 A1 <- matrix(c(
   0,1,0,1,
@@ -387,10 +419,10 @@ dags <- list(
   A5
 )
 
-
-res <- test_dag_score_equivalence(usr_score_param, dags)
-res
-
+test_dag_score_equivalence(usr_score_param, dags)
+test_compare_dp_vs_bge(usr_score_param,
+                       bge_score_param,
+                       dags)
 ############################### compare all dags ##############################
 truegraph <- matrix(c(
   0,0,0,1,
