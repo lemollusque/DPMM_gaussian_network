@@ -51,6 +51,8 @@ dp_membership_probs <- function(dp, n_iter, burnin, L){
 add_membershipp <- function(membershipp_list, membershipp, child, parents) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
     membershipp = membershipp,
+    child = child, 
+    parents = parents, 
     vars = c(child, parents) 
   )
   membershipp_list
@@ -97,47 +99,59 @@ usrscoreparameters <- function(initparam,
   T0 <- diag(usrpar$T0scale, initparam$n, initparam$n)
   
   # loop over all DPs
-  membershipp_list <- usrpar$membershipp_list
-  L <- length(membershipp_list)
-  initparam$scoreparam_list <- vector("list", L)
-  for (l in 1:L) {
-    membershipp = membershipp_list[[l]]$membershipp
-    K = ncol(membershipp)
-    Nk <- numeric(K)
-    means <- vector("list", K)
-    TN <- vector("list", K)
-    awpN <- numeric(K)
-    constscorefact <- numeric(K)
-    for (k in  1:K){
-      weightvector = membershipp[,k]
-      Nk[k] <- sum(weightvector)
-      forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
-      covmatk <- forcov$cov * Nk[k]
-      means[[k]] <- forcov$center
-      TN[[k]] <- T0 + covmatk + 
-        ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
-        (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
-      awpN[k] = usrpar$aw + Nk[k]
-      constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
+  dp_membershipp_list<- usrpar$membershipp_list
+  n_dp <- length(dp_membershipp_list)
+  initparam$dp_scoreparam_list <- vector("list", n_dp)
+  for (d in 1:n_dp){
+    membershipp_list = dp_membershipp_list[[d]]$membershipp
+    L <- length(membershipp_list)
+    scoreparam_list <- vector("list", L)
+    for (l in 1:L) {
+      membershipp = membershipp_list[[l]]
+      K = ncol(membershipp)
+      Nk <- numeric(K)
+      means <- vector("list", K)
+      TN <- vector("list", K)
+      awpN <- numeric(K)
+      constscorefact <- numeric(K)
+      for (k in  1:K){
+        weightvector = membershipp[,k]
+        Nk[k] <- sum(weightvector)
+        forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
+        covmatk <- forcov$cov * Nk[k]
+        means[[k]] <- forcov$center
+        TN[[k]] <- T0 + covmatk + 
+          ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
+          (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+        awpN[k] = usrpar$aw + Nk[k]
+        constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
+      }
+      
+      N <- sum(Nk)
+      
+      scoreconstvec <- numeric(initparam$n)
+      for (j in (1:initparam$n)) {
+        awp <- usrpar$aw - initparam$n + j
+        scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
+          sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
+          j * log(initparam$pf)
+      }
+      
+      # save score params for DP_list[l]
+      scoreparam_list[[l]] <- list(
+        K = K,
+        TN = TN,
+        awpN = awpN,
+        scoreconstvec = scoreconstvec
+      )
     }
-    
-    N <- sum(Nk)
-    
-    scoreconstvec <- numeric(initparam$n)
-    for (j in (1:initparam$n)) {
-      awp <- usrpar$aw - initparam$n + j
-      scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
-        sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
-        j * log(initparam$pf)
-    }
-    
-    # save score params for DP_list[l]
-    initparam$scoreparam_list[[l]] <- list(
-      vars = membershipp_list[[l]]$vars,
-      K = K,
-      TN = TN,
-      awpN = awpN,
-      scoreconstvec = scoreconstvec
+    initparam$dp_scoreparam_list[[d]] <- list(
+      meta = list(
+        child   = dp_membershipp_list[[d]]$child,
+        parents = dp_membershipp_list[[d]]$parents,
+        vars    = dp_membershipp_list[[d]]$vars
+      ),
+      scores = scoreparam_list
     )
   }
   initparam
@@ -148,8 +162,10 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   
   # extract needed score parameters
   needed <- c(j, parentnodes)
-  scoreparam_list = Filter(function(e) all(param$labels[needed] %in% e$vars), 
-                           param$scoreparam_list)
+  dp_scoreparam_list = Filter(function(e) all(param$labels[needed] %in% e$meta$vars), 
+                           param$dp_scoreparam_list)
+  # put all score parameters needed in one list.
+  scoreparam_list = unlist(lapply(dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
   n_score = length(scoreparam_list)
   corescore_list  <- numeric(n_score)
   for (s in 1:n_score){
@@ -271,7 +287,7 @@ g0Priors <- list(
 scaled_data = scale(data) 
 n_iter = 100
 burnin = 30
-L = 10 # sample to takedp, n_iter, burnin, L)
+L = 10 # sample to take
 
 Gamma_list <- list()
 vars  <- c("x1","x2","x3","x4")
