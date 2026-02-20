@@ -50,9 +50,9 @@ g0Priors <- list(
 )
 
 scaled_data = scale(data) 
-n_iter = 100
-burnin = 30
-L = 10 # sample to take
+n_iter = 500
+burnin = 300
+L = 50 # sample to take
 
 Gamma_list <- list()
 vars  <- c("x1","x2","x3","x4")
@@ -77,69 +77,200 @@ usr_score_param <- BiDAG::scoreparameters(scoretype = "usr",
                                                         edgepf = 1
                                           )
 )
-
+bge_score_param <- scoreparameters("bge", 
+                                   scaled_data, 
+                                   bgepar = list(am = alpha_mu, 
+                                                 aw = alpha_w, 
+                                                 edgepf = 1)
+)
 #----------------------------------- posterior -------------------------------
-# search space
-start <- Sys.time()
-it_mcmc <- BiDAG::iterativeMCMC(scorepar = usr_score_param, 
-                                    hardlimit = 14, 
-                                    verbose = F, 
-                                    scoreout = TRUE)
-time <- Sys.time() - start
-
-searchspace = list(score = usr_score_param, scoretable = it_mcmc$scoretable, DAG = it_mcmc$DAG, 
-     maxorder = it_mcmc$maxorder, endspace = it_mcmc$endspace, time = time)
-
-# partition mcmc
-dp.mcmc <- function(searchspace, alpha = 0.05, 
-                               order = FALSE, burnin = 0.33, iterations = 600) {
-  start <- Sys.time()
-  score <- searchspace$score
-  
-  if(order) {
-    dp_mcmc_fit <- BiDAG::orderMCMC(score, MAP = FALSE, chainout = TRUE, alpha = alpha, 
-                                startorder = searchspace$maxorder, scoretable = searchspace$scoretable,
-                                startspace = searchspace$endspace, iterations = iterations, stepsave = 4)
-  }
-  else {
-    dp_mcmc_fit <- BiDAG::partitionMCMC(score, alpha = alpha, startDAG = searchspace$DAG, 
-                                    scoretable = searchspace$scoretable, startspace = searchspace$endspace,
-                                    iterations = iterations, stepsave = 4)
-  }
-  toburn <- round(burnin * dp_mcmc_fit$info$samplesteps)
-  
-  dp_mcmc_fit$traceadd$incidence <- dp_mcmc_fit$traceadd$incidence[-(1:toburn)]
-  time <- Sys.time() - start + searchspace$time
-  dp_mcmc_fit$time <- as.numeric(time, units = "secs")
-  
-  return(dp_mcmc_fit)
-}
-
-dp_mcmc_fit = dp.mcmc(searchspace)
-sampled_dags <- dp_mcmc_fit$traceadd$incidence
-
-# Find index in all.dags of sampled dags 
-# List all DAGs with n nodes
-all.dags <- list()
-adj <- matrix(0, nrow = n, ncol = n)
+all_dags <- list()
+adj <- matrix(0, n, n)
 dag.counter <- 0
+
 all.comb <- rep(list(c(0,1)), n*(n-1))
-all.comb <- expand.grid(all.comb)  # all combinations outside of diagonal of adjacency matrix
+all.comb <- expand.grid(all.comb)
 
 for(i in 1:nrow(all.comb)) {
   adj[col(adj)!=row(adj)] <- as.numeric(all.comb[i, ])
-  
   if(is.DAG(adj)) {
     dag.counter <- dag.counter + 1
-    all.dags[[dag.counter]] <- adj
+    all_dags[[dag.counter]] <- adj
   }
 }
-all.vecdags <- lapply(all.dags, c)
-post.indexes <- sapply(sampled_dags, function(x) which(all.vecdags %in% list(as.numeric(x))))
-#BGe
-dp_post.tab <- table(post.indexes)
-dp_post.post <- as.numeric(dp_post.tab)/sum(dp_post.tab)
-ind.dp_post <- as.numeric(names(dp_post.tab))
 
-results <- data.frame(kl = KL_div(bge.post, ind.bge, true.p), 
-                                     iter = iters[i], group = "DP")
+true_score_usr <- sapply(all_dags, function(dag) BiDAG::DAGscore(usr_score_param, dag))
+true_score_bge <- sapply(all_dags, function(dag) BiDAG::DAGscore(bge_score_param, dag))
+
+true_p_usr <- exp(true_score_usr - matrixStats::logSumExp(true_score_usr))
+true_p_bge <- exp(true_score_bge - matrixStats::logSumExp(true_score_bge))
+
+# searchspace
+searchspace_usr <- BiDAG::iterativeMCMC(scorepar = usr_score_param, scoreout = TRUE)
+searchspace_bge <- BiDAG::iterativeMCMC(scorepar = bge_score_param, scoreout = TRUE)
+
+# MCMC
+toburn <- 250
+iters <- c(30e1, 44e1, 65e1, 96e1, 14e2, 21e2, 31e2, 46e2, 67e2, 10e3)
+
+results <- data.frame()
+for(i in 1:length(iters)) {
+  print(i)
+  fit_usr <- BiDAG::partitionMCMC(usr_score_param, 
+                                  alpha=0.2, 
+                                  startDAG = searchspace_usr$DAG,
+                                  scoretable = searchspace_usr$scoretable, 
+                                  startspace = searchspace_usr$endspace,
+                                  iterations = 2*(iters[i] + toburn), stepsave = 2)
+  
+  fit_bge <- BiDAG::partitionMCMC(bge_score_param, 
+                                  alpha=0.2, 
+                                  startDAG = searchspace_bge$DAG,
+                                  scoretable = searchspace_bge$scoretable, 
+                                  startspace = searchspace_bge$endspace,
+                                  iterations = 2*(iters[i] + toburn), stepsave = 2)
+  
+  sampled_usr <- fit_usr$traceadd$incidence[-(1:toburn)]
+  sampled_bge <- fit_bge$traceadd$incidence[-(1:toburn)]
+  
+  all_vecdags <- lapply(all_dags, c)
+  
+  post_indexes_usr <- sapply(sampled_usr, function(x)
+    which(all_vecdags %in% list(as.numeric(x))))
+  
+  post_indexes_bge <- sapply(sampled_bge, function(x)
+    which(all_vecdags %in% list(as.numeric(x))))
+  
+  tab_usr <- table(post_indexes_usr)
+  p_hat_usr <- as.numeric(tab_usr) / sum(tab_usr)
+  ind_usr <- as.numeric(names(tab_usr))
+  
+  tab_bge <- table(post_indexes_bge)
+  p_hat_bge <- as.numeric(tab_bge) / sum(tab_bge)
+  ind_bge <- as.numeric(names(tab_bge))
+  
+  
+  KL_div <- function(est.post, est.ind, p_true) {
+    q <- rep(NA, length(p_true))
+    q[est.ind] <- est.post
+    d <- q * log(q / p_true)
+    sum(d, na.rm = TRUE)
+  }
+  
+  kl_usr <- KL_div(p_hat_usr, ind_usr, true_p_usr)
+  kl_bge <- KL_div(p_hat_bge, ind_bge, true_p_bge)
+  
+  
+  # Save results
+  results <- rbind(results, data.frame(kl = kl_usr, 
+                                       iter = iters[i], 
+                                       group = "usr"))
+  results <- rbind(results, data.frame(kl = kl_bge, 
+                                       iter = iters[i], 
+                                       group = "BGe"))
+}
+
+
+# -----------------------------
+# Plot KL divergences (usr vs BGe)
+# -----------------------------
+post_plots <- list()
+color2 <- c("usr" = "#00acc7", "BGe" = "#db0000")
+shape2 <- c("usr" = 4, "BGe" = 3)
+linetype2 <- c("usr" = "dashed", "BGe" = "dotdash")
+
+post_plots[[1]] <- ggplot(results, aes(x = iter, y = kl, group = group)) +
+  geom_line(aes(linetype = group)) +
+  geom_point(aes(shape = group, color = group)) +
+  scale_shape_manual(values = shape2) +
+  scale_color_manual(values = color2) +
+  scale_linetype_manual(values = linetype2) +
+  scale_x_continuous(trans = "log10") +
+  xlab("Samples") + ylab("Reverse K-L divergence") +
+  theme_light() +
+  theme(legend.title = element_blank(), legend.position = "none")
+
+# -----------------------------
+# Posterior overlay (last setting)
+# Choose what "true.p" means:
+#   Option A: compare both estimates to BGe truth:
+#     true.p <- true_p_bge
+#   Option B: compare each to its own truth (not one bar plot):
+#     (harder to show in one bar plot)
+#
+# Here I default to BGe truth in the bars (common baseline),
+# and plot both usr and BGe estimates as points.
+# -----------------------------
+true.p <- true_p_bge
+
+post_data <- rbind(
+  data.frame(x = ind_usr, y = p_hat_usr, group = "usr"),
+  data.frame(x = ind_bge, y = p_hat_bge, group = "BGe")
+)
+
+post_main <- ggplot() +
+  geom_bar(
+    data = data.frame(x = 1:dag.counter, y = true.p),
+    aes(x, y),
+    stat = "identity",
+    width = 0.43,
+    fill = "#5e5e5e"
+  ) +
+  geom_point(
+    data = post_data,
+    aes(x, y, shape = group, color = group),
+    size = 1
+  ) +
+  scale_shape_manual(values = shape2) +
+  scale_color_manual(values = color2) +
+  xlab("DAG") + ylab("Posterior probability") +
+  theme_light() +
+  xlim(1, min(200, dag.counter)) +
+  theme(legend.title = element_blank(), legend.position = "none") +
+  scale_y_sqrt()
+
+# Inset for the tail (201:dag.counter), only if there is a tail
+if (dag.counter > 200) {
+  post_inset <- ggplot() +
+    geom_bar(
+      data = data.frame(x = 1:dag.counter, y = true.p),
+      aes(x, y),
+      stat = "identity",
+      width = 0.43,
+      fill = "#5e5e5e"
+    ) +
+    geom_point(
+      data = post_data,
+      aes(x, y, shape = group, color = group),
+      size = 1
+    ) +
+    scale_shape_manual(values = shape2) +
+    scale_color_manual(values = color2) +
+    xlab("DAG") + ylab("Posterior probability") +
+    theme_light() +
+    xlim(201, dag.counter) +
+    theme(
+      legend.title = element_blank(),
+      legend.position = "none",
+      panel.grid.major = element_blank(),
+      axis.title = element_text(size = 8),
+      axis.text  = element_text(size = 8)
+    ) +
+    scale_y_sqrt(limits = c(0, true.p[201]))
+  
+  post_plots[[2]] <- ggdraw() +
+    draw_plot(post_main) +
+    draw_plot(post_inset, x = 0.475, y = 0.45, width = 0.5, height = 0.5)
+} else {
+  # If <=200 DAGs, just show the main plot without inset
+  post_plots[[2]] <- post_main
+}
+
+ggarrange(
+  post_plots[[1]],
+  post_plots[[2]],
+  ncol = 2,
+  widths = c(1, 2),
+  common.legend = TRUE,
+  legend = "bottom"
+)
