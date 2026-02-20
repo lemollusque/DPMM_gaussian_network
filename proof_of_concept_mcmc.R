@@ -24,6 +24,7 @@ data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T)
 
 vars  <- c("x1","x2","x3","x4")
 colnames(data) = vars
+
 #----------------------  overwrite functions ----------------------------------
 # replace BIDAG functions
 unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
@@ -76,3 +77,69 @@ usr_score_param <- BiDAG::scoreparameters(scoretype = "usr",
                                                         edgepf = 1
                                           )
 )
+
+#----------------------------------- posterior -------------------------------
+# search space
+start <- Sys.time()
+it_mcmc <- BiDAG::iterativeMCMC(scorepar = usr_score_param, 
+                                    hardlimit = 14, 
+                                    verbose = F, 
+                                    scoreout = TRUE)
+time <- Sys.time() - start
+
+searchspace = list(score = usr_score_param, scoretable = it_mcmc$scoretable, DAG = it_mcmc$DAG, 
+     maxorder = it_mcmc$maxorder, endspace = it_mcmc$endspace, time = time)
+
+# partition mcmc
+dp.mcmc <- function(searchspace, alpha = 0.05, 
+                               order = FALSE, burnin = 0.33, iterations = 600) {
+  start <- Sys.time()
+  score <- searchspace$score
+  
+  if(order) {
+    dp_mcmc_fit <- BiDAG::orderMCMC(score, MAP = FALSE, chainout = TRUE, alpha = alpha, 
+                                startorder = searchspace$maxorder, scoretable = searchspace$scoretable,
+                                startspace = searchspace$endspace, iterations = iterations, stepsave = 4)
+  }
+  else {
+    dp_mcmc_fit <- BiDAG::partitionMCMC(score, alpha = alpha, startDAG = searchspace$DAG, 
+                                    scoretable = searchspace$scoretable, startspace = searchspace$endspace,
+                                    iterations = iterations, stepsave = 4)
+  }
+  toburn <- round(burnin * dp_mcmc_fit$info$samplesteps)
+  
+  dp_mcmc_fit$traceadd$incidence <- dp_mcmc_fit$traceadd$incidence[-(1:toburn)]
+  time <- Sys.time() - start + searchspace$time
+  dp_mcmc_fit$time <- as.numeric(time, units = "secs")
+  
+  return(dp_mcmc_fit)
+}
+
+dp_mcmc_fit = dp.mcmc(searchspace)
+sampled_dags <- dp_mcmc_fit$traceadd$incidence
+
+# Find index in all.dags of sampled dags 
+# List all DAGs with n nodes
+all.dags <- list()
+adj <- matrix(0, nrow = n, ncol = n)
+dag.counter <- 0
+all.comb <- rep(list(c(0,1)), n*(n-1))
+all.comb <- expand.grid(all.comb)  # all combinations outside of diagonal of adjacency matrix
+
+for(i in 1:nrow(all.comb)) {
+  adj[col(adj)!=row(adj)] <- as.numeric(all.comb[i, ])
+  
+  if(is.DAG(adj)) {
+    dag.counter <- dag.counter + 1
+    all.dags[[dag.counter]] <- adj
+  }
+}
+all.vecdags <- lapply(all.dags, c)
+post.indexes <- sapply(sampled_dags, function(x) which(all.vecdags %in% list(as.numeric(x))))
+#BGe
+dp_post.tab <- table(post.indexes)
+dp_post.post <- as.numeric(dp_post.tab)/sum(dp_post.tab)
+ind.dp_post <- as.numeric(names(dp_post.tab))
+
+results <- data.frame(kl = KL_div(bge.post, ind.bge, true.p), 
+                                     iter = iters[i], group = "DP")
