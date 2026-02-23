@@ -54,18 +54,41 @@ n_iter = 100
 burnin = 30
 L = 10 # sample to take
 
+cormat <- cor(scaled_data)
+pc.skel = pcalg::pc(suffStat = list(C = cormat, 
+                          n = N), indepTest = pcalg::gaussCItest, alpha = 0.05, 
+          labels = colnames(scaled_data), skel.method = "stable", 
+          verbose = FALSE)
+
+g <- pc.skel@graph
+startspace <- 1 * (graph2m(g))
+
+
 Gamma_list <- list()
 vars  <- c("x1","x2","x3","x4")
 for (child in vars){
-  parents <- vars[vars != child]
+  parents <- names(which(startspace[ , child] == 1))
   dp_data = scaled_data[,c(child, parents)]
-  dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+  if (length(parents) == 0){
+    dp <-  DirichletProcessGaussian(dp_data,
+                                    alphaPriors = c(1, 20))
+  }
+  else{
+    n_col = ncol(dp_data)
+    g0Priors <- list(
+      mu0    = rep(0, n_col),
+      Lambda = diag(n_col) / t,   # T = (1/t) I
+      kappa0 = alpha_mu,
+      nu     = alpha_w
+    )
+    
+    dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+  }
   dp <- Fit(dp, n_iter)
   
   Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
   Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents)
 }
-
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## DAG sampling
@@ -83,7 +106,7 @@ cl <- makeCluster(numCores)
 clusterEvalQ(cl, {
   library(BiDAG)
   #----------------------  overwrite functions ----------------------------------
-  source("fns.R")  # must define usrscoreparameters + usrDAGcorescore replacements
+  source("fns.R")  
   
   unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
   assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))

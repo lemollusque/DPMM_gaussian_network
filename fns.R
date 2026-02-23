@@ -21,9 +21,9 @@ dp_membership_probs <- function(dp, n_iter, burnin, L){
     probs <- matrix(0, nrow = N, ncol = numLabels)
     for (i in seq_len(N)) {
       probs[i, 1:numLabels] <- pointsPerCluster * 
-        dirichletprocess:::Likelihood.mvnormal(mdObj, 
-                                               y[i,, drop = FALSE], 
-                                               clusterParams)
+        Likelihood(mdObj, 
+                   y[i,, drop = FALSE], 
+                   clusterParams)
     }
     probs_list[[l]] <- probs / rowSums(probs)
   }
