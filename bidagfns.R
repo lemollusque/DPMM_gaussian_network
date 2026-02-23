@@ -753,3 +753,520 @@ bidag_usrDAGcorescore = function (j, parentnodes, n, param)
   })
   corescore
 }
+bidag_iterativeMCMC <- function (scorepar, MAP = TRUE, posterior = 0.5, softlimit = 9, 
+    hardlimit = 12, alpha = 0.05, gamma = 1, verbose = TRUE, 
+    chainout = FALSE, scoreout = FALSE, cpdag = FALSE, mergetype = "skeleton", 
+    iterations = NULL, moveprobs = NULL, stepsave = NULL, startorder = NULL, 
+    accum = FALSE, compress = TRUE, plus1it = NULL, startspace = NULL, 
+    blacklist = NULL, addspace = NULL, scoretable = NULL, alphainit = NULL) 
+{
+    if (is.null(moveprobs)) {
+        prob1 <- 99
+        if (scorepar$nsmall > 3) {
+            prob1 <- round(6 * 99 * scorepar$nsmall/(scorepar$nsmall^2 + 
+                10 * scorepar$nsmall - 24))
+        }
+        prob1 <- prob1/100
+        moveprobs <- c(prob1, 0.99 - prob1, 0.01)
+        moveprobs <- moveprobs/sum(moveprobs)
+        moveprobs <- c(moveprobs[c(1, 2)], 0, moveprobs[3])
+    }
+    if (is.null(iterations)) {
+        if (scorepar$nsmall < 26) {
+            iterations <- 25000
+        }
+        else {
+            iterations <- (3.5 * scorepar$nsmall * scorepar$nsmall * 
+                log(scorepar$nsmall)) - (3.5 * scorepar$nsmall * 
+                scorepar$nsmall * log(scorepar$nsmall))%%1000
+        }
+    }
+    if (is.null(stepsave)) {
+        stepsave <- floor(iterations/1000)
+    }
+    ordercheck <- checkstartorder(startorder, varnames = scorepar$labels.short, 
+        mainnodes = scorepar$mainnodes, bgnodes = scorepar$static, 
+        DBN = scorepar$DBN, split = scorepar$split)
+    if (ordercheck$errorflag) {
+        stop(ordercheck$message)
+    }
+    else {
+        startorder <- ordercheck$order
+    }
+    if (scorepar$DBN) {
+        if (!is.null(blacklist)) {
+            blacklist <- DBNbacktransform(blacklist, scorepar)
+        }
+        if (!is.null(startspace)) {
+            startspace <- DBNbacktransform(startspace, scorepar)
+        }
+        if (!is.null(addspace)) {
+            addspace <- DBNbacktransform(addspace, scorepar)
+        }
+        if (scorepar$split) {
+            if (scorepar$MDAG) {
+                param1 <- scorepar$paramsets[[scorepar$nsets]]
+                param2 <- scorepar$paramsets[[1]]
+                param2$paramsets <- scorepar$paramsets[1:(scorepar$nsets - 
+                  1)]
+                param2$MDAG <- TRUE
+            }
+            else {
+                param1 <- scorepar$firstslice
+                param2 <- scorepar$otherslices
+            }
+            if (scoreout | !is.null(scoretable)) {
+                cat("option scoreout always equals FALSE for DBNs with samestruct=FALSE, scoretable parameter is ignored \n")
+            }
+            cat("learning initial structure...\n")
+            result.init <- iterativeMCMCplus1(param = param1, 
+                iterations, stepsave, plus1it = plus1it, MAP = MAP, 
+                posterior = posterior, alpha = alpha, cpdag = cpdag, 
+                moveprobs = moveprobs, softlimit = softlimit, 
+                hardlimit = hardlimit, startspace = startspace$init, 
+                blacklist = blacklist$init, gamma = gamma, verbose = verbose, 
+                chainout = chainout, scoreout = FALSE, mergecp = mergetype, 
+                addspace = addspace$init, scoretable = NULL, 
+                startorder = startorder$init, accum = accum, 
+                alphainit = alphainit, compress = compress)
+            cat("learning transition structure...\n")
+            result.trans <- iterativeMCMCplus1(param = param2, 
+                iterations, stepsave, plus1it = plus1it, MAP = MAP, 
+                posterior = posterior, alpha = alpha, cpdag = cpdag, 
+                moveprobs = moveprobs, softlimit = softlimit, 
+                hardlimit = hardlimit, startspace = startspace$trans, 
+                blacklist = blacklist$trans, gamma = gamma, verbose = verbose, 
+                chainout = chainout, scoreout = FALSE, mergecp = mergetype, 
+                addspace = addspace$trans, scoretable = NULL, 
+                startorder = startorder$trans, accum = accum, 
+                alphainit = alphainit, compress = compress)
+            result <- mergeDBNres.it(result.init, result.trans, 
+                scorepar)
+        }
+        else {
+            result <- iterativeMCMCplus1(param = scorepar, iterations, 
+                stepsave, plus1it = plus1it, MAP = MAP, posterior = posterior, 
+                alpha = alpha, cpdag = cpdag, moveprobs = moveprobs, 
+                softlimit = softlimit, hardlimit = hardlimit, 
+                startspace = startspace, blacklist = blacklist, 
+                gamma = gamma, verbose = verbose, chainout = chainout, 
+                scoreout = scoreout, mergecp = mergetype, addspace = addspace, 
+                scoretable = scoretable, startorder = startorder, 
+                accum = accum, alphainit = alphainit, compress = compress)
+        }
+    }
+    else {
+        result <- iterativeMCMCplus1(param = scorepar, iterations, 
+            stepsave, plus1it = plus1it, MAP = MAP, posterior = posterior, 
+            alpha = alpha, cpdag = cpdag, moveprobs = moveprobs, 
+            softlimit = softlimit, hardlimit = hardlimit, startspace = startspace, 
+            blacklist = blacklist, gamma = gamma, verbose = verbose, 
+            chainout = chainout, scoreout = scoreout, mergecp = mergetype, 
+            addspace = addspace, scoretable = scoretable, startorder = startorder, 
+            accum = accum, compress = compress)
+    }
+    result$info <- list()
+    result$info$DBN <- scorepar$DBN
+    if (scorepar$DBN) {
+        result$info$nsmall <- scorepar$nsmall
+        result$info$bgn <- scorepar$bgn
+        result$info$split <- scorepar$split
+    }
+    result$info$algo <- "iterative order MCMC"
+    if (is.null(startspace)) {
+        result$info$spacealgo <- "PC"
+    }
+    else {
+        result$info$spacealgo <- "user defined matrix"
+    }
+    result$info$iterations <- iterations
+    result$info$plus1it <- length(result$max)
+    result$info$samplesteps <- floor(iterations/stepsave) + 1
+    if (MAP) {
+        result$info$sampletype <- "MAP"
+    }
+    else {
+        result$info$sampletype <- "sample"
+        result$info$threshold <- posterior
+    }
+    result$info$fncall <- match.call()
+    attr(result, "class") <- "iterativeMCMC"
+    return(result)
+}
+bidag_iterativeMCMCplus1 <- function (param, iterations, stepsave, plus1it = NULL, MAP = TRUE, 
+    posterior = 0.5, startorder = NULL, moveprobs, softlimit = 9, 
+    hardlimit = 14, chainout = FALSE, scoreout = FALSE, startspace = NULL, 
+    blacklist = NULL, gamma = 1, verbose = FALSE, alpha = NULL, 
+    cpdag = FALSE, mergecp = "skeleton", addspace = NULL, scoretable = NULL, 
+    accum, alphainit = NULL, compress = TRUE) 
+{
+    n <- param$n
+    nsmall <- param$nsmall
+    matsize <- ifelse(param$DBN, n + nsmall, n)
+    objsizes <- list()
+    maxlist <- list()
+    maxobj <- list()
+    updatenodeslist <- list()
+    MCMCtraces <- list()
+    if (!param$DBN) {
+        if (param$bgn != 0) {
+            updatenodes <- c(1:n)[-param$bgnodes]
+        }
+        else {
+            updatenodes <- c(1:n)
+        }
+    }
+    else {
+        updatenodes <- c(1:nsmall)
+    }
+    if (is.null(blacklist)) {
+        blacklist <- matrix(0, nrow = matsize, ncol = matsize)
+    }
+    diag(blacklist) <- 1
+    if (!is.null(param$bgnodes)) {
+        for (i in param$bgnodes) {
+            blacklist[, i] <- 1
+        }
+    }
+    if (!is.null(scoretable)) {
+        startskel <- scoretable$adjacency
+        blacklist <- scoretable$blacklist
+        scoretable <- scoretable$tables
+    }
+    else {
+        if (is.null(startspace)) {
+            startspace <- definestartspace(alpha, param, cpdag = cpdag, 
+                algo = "pc", alphainit = alphainit)
+        }
+        startskeleton <- 1 * (startspace & !blacklist)
+        if (!is.null(addspace)) {
+            startskel <- 1 * ((addspace | startskeleton) & !blacklist)
+        }
+        else {
+            startskel <- startskeleton
+        }
+    }
+    blacklistparents <- list()
+    for (i in 1:matsize) {
+        blacklistparents[[i]] <- which(blacklist[, i] == 1)
+    }
+    if (verbose) {
+        cat(paste("maximum parent set size is", max(apply(startskel, 
+            2, sum))), "\n")
+    }
+    if (max(apply(startskel, 2, sum)) > hardlimit) {
+        stop("the size of maximal parent set is higher that the hardlimit; redifine the search space or increase the hardlimit!")
+    }
+    maxorder <- startorder
+    ptab <- listpossibleparents.PC.aliases(startskel, isgraphNEL = FALSE, 
+        n, updatenodes)
+    if (verbose) {
+        cat("core space defined, score table are being computed \n")
+        flush.console()
+    }
+    parenttable <- ptab$parenttable
+    aliases <- ptab$aliases
+    numberofparentsvec <- ptab$numberofparentsvec
+    numparents <- ptab$numparents
+    plus1lists <- PLUS1(matsize, aliases, updatenodes, blacklistparents)
+    rowmaps <- parentsmapping(parenttable, numberofparentsvec, 
+        n, updatenodes)
+    if (is.null(scoretable)) {
+        scoretable <- scorepossibleparents.PLUS1(parenttable = parenttable, 
+            plus1lists = plus1lists, n = n, param = param, updatenodes = updatenodes, 
+            rowmaps, numparents, numberofparentsvec)
+    }
+    posetparenttable <- poset(parenttable, numberofparentsvec, 
+        rowmaps, n, updatenodes)
+    if (MAP == TRUE) {
+        maxmatrices <- posetscoremax(posetparenttable, scoretable, 
+            numberofparentsvec, rowmaps, n, plus1lists = plus1lists, 
+            updatenodes)
+    }
+    else {
+        bannedscore <- poset.scores(posetparenttable, scoretable, 
+            ptab$numberofparentsvec, rowmaps, n, plus1lists = plus1lists, 
+            ptab$numparents, updatenodes)
+    }
+    oldadj <- startskeleton
+    i <- 1
+    if (is.null(plus1it)) 
+        plus1it <- 100
+    while (length(updatenodes) > 0 & i <= plus1it) {
+        if (i > 1) {
+            newptab <- listpossibleparents.PC.aliases(newadj, 
+                isgraphNEL = FALSE, n, updatenodes)
+            parenttable[updatenodes] <- newptab$parenttable[updatenodes]
+            aliases[updatenodes] <- newptab$aliases[updatenodes]
+            numberofparentsvec[updatenodes] <- newptab$numberofparentsvec[updatenodes]
+            numparents[updatenodes] <- newptab$numparents[updatenodes]
+            newplus1lists <- PLUS1(matsize, aliases, updatenodes, 
+                blacklistparents)
+            plus1lists$mask[updatenodes] <- newplus1lists$mask[updatenodes]
+            plus1lists$parents[updatenodes] <- newplus1lists$parents[updatenodes]
+            plus1lists$aliases[updatenodes] <- newplus1lists$aliases[updatenodes]
+            rowmaps[updatenodes] <- parentsmapping(parenttable, 
+                numberofparentsvec, n, updatenodes)[updatenodes]
+            scoretable[updatenodes] <- scorepossibleparents.PLUS1(parenttable, 
+                plus1lists, n, param, updatenodes, rowmaps, numparents, 
+                numberofparentsvec)[updatenodes]
+            posetparenttable[updatenodes] <- poset(parenttable, 
+                numberofparentsvec, rowmaps, n, updatenodes)[updatenodes]
+            if (MAP) {
+                newmaxmatrices <- posetscoremax(posetparenttable, 
+                  scoretable, numberofparentsvec, rowmaps, n, 
+                  plus1lists = plus1lists, updatenodes)
+                maxmatrices$maxmatrix[updatenodes] <- newmaxmatrices$maxmatrix[updatenodes]
+                maxmatrices$maxrow[updatenodes] <- newmaxmatrices$maxrow[updatenodes]
+            }
+            else {
+                newbannedscore <- poset.scores(posetparenttable, 
+                  scoretable, numberofparentsvec, rowmaps, n, 
+                  plus1lists = plus1lists, numparents, updatenodes)
+                bannedscore[updatenodes] <- newbannedscore[updatenodes]
+            }
+            if (verbose) {
+                cat(paste("search space expansion", i, "\n"))
+                flush.console()
+            }
+        }
+        else {
+            if (verbose) {
+                cat(paste("score tables completed, iterative MCMC is running", 
+                  "\n"))
+                flush.console()
+            }
+        }
+        if (MAP) {
+            MCMCresult <- orderMCMCplus1max(n, nsmall, startorder, 
+                iterations, stepsave, moveprobs, parenttable, 
+                scoretable, aliases, numparents, rowmaps, plus1lists, 
+                maxmatrices, numberofparentsvec, gamma = gamma, 
+                bgnodes = param$bgnodes, matsize = matsize, chainout = chainout, 
+                compress = compress)
+        }
+        else {
+            MCMCresult <- orderMCMCplus1(n, nsmall, startorder, 
+                iterations, stepsave, moveprobs, parenttable, 
+                scoretable, aliases, numparents, rowmaps, plus1lists, 
+                bannedscore, numberofparentsvec, gamma = gamma, 
+                bgnodes = param$bgnodes, matsize = matsize, chainout = TRUE, 
+                compress = compress)
+        }
+        MCMCtraces$DAGscores[[i]] <- MCMCresult$DAGscores
+        if (chainout) {
+            if (param$DBN) {
+                MCMCtraces$incidence[[i]] <- lapply(MCMCresult$incidence, 
+                  function(x) DBNtransform(x, param = param))
+                MCMCtraces$orders[[i]] <- lapply(MCMCresult$orders, 
+                  order2var, varnames = param$firstslice$labels)
+            }
+            else {
+                MCMCtraces$incidence[[i]] <- lapply(MCMCresult$incidence, 
+                  function(x) assignLabels(x, param$labels))
+                MCMCtraces$orders[[i]] <- lapply(MCMCresult$orders, 
+                  order2var, varnames = param$labels)
+            }
+            MCMCtraces$orderscores[[i]] <- MCMCresult$orderscores
+        }
+        maxobj <- storemaxMCMC(MCMCresult, param)
+        maxlist[[i]] <- maxobj
+        maxN <- which.max(MCMCresult$DAGscores)
+        if (i > 1) {
+            if (maxobj$score > maxscore) {
+                maxDAG <- maxobj$DAG
+                maxorder <- maxobj$order
+                maxscore <- maxobj$score
+                maxit <- i
+            }
+        }
+        else {
+            maxDAG <- maxobj$DAG
+            maxscore <- maxobj$score
+            maxorder <- maxobj$order
+            maxit <- 1
+        }
+        if (MAP) {
+            newadj <- newspacemap(n, startskeleton, oldadj, softlimit, 
+                hardlimit, blacklist, maxdag = MCMCresult$maxdag, 
+                mergetype = mergecp, accum = accum)
+        }
+        else {
+            newadj <- newspaceskel(n, startskeleton, oldadj, 
+                softlimit, hardlimit, posterior, blacklist, MCMCtrace = MCMCresult[[1]], 
+                mergetype = mergecp)
+        }
+        updatenodes <- which(apply(newadj == oldadj, 2, all) == 
+            FALSE)
+        updatenodeslist[[i]] <- updatenodes
+        if (is.null(plus1it)) {
+            oldadj <- newadj
+        }
+        else if (i < plus1it) {
+            oldadj <- newadj
+        }
+        else if (!scoreout) {
+            oldadj <- newadj
+        }
+        startorder <- c(MCMCresult$orders[[maxN]], param$bgnodes)
+        i <- i + 1
+    }
+    addedge <- sum(newadj) - sum(startskeleton)
+    result <- list()
+    if (scoreout) {
+        if (chainout) {
+            output <- 4
+        }
+        else {
+            output <- 3
+        }
+    }
+    else {
+        if (chainout) {
+            output <- 2
+        }
+        else {
+            output <- 1
+        }
+    }
+    result$maxtrace <- maxlist
+    result$DAG <- maxobj$DAG
+    result$CPDAG <- Matrix(graph2m(dag2cpdag(m2graph(result$DAG))), 
+        sparse = TRUE)
+    result$score <- maxobj$score
+    result$maxorder <- maxobj$order
+    result$trace <- MCMCtraces$DAGscores
+    MCMCtraces$DAGscores <- NULL
+    if (param$DBN) {
+        result$startspace <- DBNtransform(startskeleton, param)
+        result$endspace <- DBNtransform(oldadj, param)
+    }
+    else {
+        result$startspace <- startskeleton
+        result$endspace <- oldadj
+    }
+    switch(as.character(output), `1` = {
+    }, `2` = {
+        result$traceadd <- MCMCtraces
+    }, `3` = {
+        result$scoretable <- list()
+        result$scoretable$adjacency <- result$endspace
+        result$scoretable$tables <- scoretable
+        result$scoretable$blacklist <- blacklist
+        attr(result$scoretable, "class") <- "scorespace"
+    }, `4` = {
+        result$traceadd <- MCMCtraces
+        result$scoretable <- list()
+        result$scoretable$adjacency <- result$endspace
+        result$scoretable$tables <- scoretable
+        result$scoretable$blacklist <- blacklist
+        attr(result$scoretable, "class") <- "scorespace"
+    })
+    return(result)
+}
+BiDAG_definestartspace <- function (alpha, param, cpdag = FALSE, algo = "pc", alphainit = NULL) 
+{
+    if (is.null(alphainit)) {
+        alphainit <- alpha
+    }
+    local_type <- param$type
+    if (local_type == "usr") {
+        if (param$pctesttype %in% c("bde", "bge", "bdecat")) {
+            local_type <- param$pctesttype
+        }
+    }
+    if (param$DBN) {
+        if (param$stationary) {
+            othersliceskel <- definestartspace(alpha, param$otherslices, 
+                cpdag = FALSE, algo = "pc")
+            firstsliceskel <- definestartspace(alphainit, param$firstslice, 
+                cpdag = FALSE, algo = "pc")
+            startspace <- othersliceskel
+            startspace[param$intstr$rows, param$intstr$cols] <- 1 * 
+                (startspace[param$intstr$rows, param$intstr$cols] | 
+                  firstsliceskel[param$intstr$rows, param$intstr$cols])
+        }
+        else {
+            skels <- list()
+            skels[[1]] <- definestartspace(alphainit, param$paramsets[[1]], 
+                cpdag = FALSE, algo = "pc")
+            startspace <- skels[[1]]
+            for (i in 2:(length(param$paramsets) - 1)) {
+                skels[[i]] <- definestartspace(alpha, param$paramsets[[i]], 
+                  cpdag = FALSE, algo = "pc")
+                startspace <- 1 * (skels[[i]] | startspace)
+            }
+            firstsliceskel <- definestartspace(alphainit, param$paramsets[[length(param$paramsets)]], 
+                cpdag = FALSE, algo = "pc")
+            startspace[param$intstr$rows, param$intstr$cols] <- 1 * 
+                (startspace[param$intstr$rows, param$intstr$cols] | 
+                  firstsliceskel[param$intstr$rows, param$intstr$cols])
+        }
+    }
+    else {
+        if (local_type == "bde") {
+            if (cpdag) {
+                pc.skel <- pc(suffStat = list(d1 = param$d1, 
+                  d0 = param$d0, data = param$data), indepTest = weightedbinCItest, 
+                  alpha = alpha, labels = colnames(param$data), 
+                  verbose = FALSE)
+            }
+            else {
+                pc.skel <- pcalg::skeleton(suffStat = list(d1 = param$d1, 
+                  d0 = param$d0, data = param$data), indepTest = weightedbinCItest, 
+                  alpha = alpha, labels = colnames(param$data), 
+                  verbose = FALSE)
+            }
+        }
+        else if (local_type == "bdecat") {
+            if (cpdag) {
+                pc.skel <- pc(suffStat = param, indepTest = weightedcatCItest, 
+                  alpha = alpha, labels = colnames(param$data), 
+                  verbose = FALSE)
+            }
+            else {
+                pc.skel <- pcalg::skeleton(suffStat = param, 
+                  indepTest = weightedcatCItest, alpha = alpha, 
+                  labels = colnames(param$data), verbose = FALSE)
+            }
+        }
+        else if (local_type == "bge") {
+            if (is.null(param$weightvector)) {
+                cormat <- cor(param$data)
+                N <- nrow(param$data)
+            }
+            else {
+                N <- sum(param$weightvector)
+                cormat <- cov.wt(param$data, wt = param$weightvector, 
+                  cor = TRUE)$cor
+            }
+            if (cpdag) {
+                pc.skel <- pcalg::pc(suffStat = list(C = cormat, 
+                  n = N), indepTest = gaussCItest, alpha = alpha, 
+                  labels = colnames(param$data), skel.method = "stable", 
+                  verbose = FALSE)
+            }
+            else {
+                pc.skel <- pcalg::skeleton(suffStat = list(C = cormat, 
+                  n = N), indepTest = gaussCItest, alpha = alpha, 
+                  labels = colnames(param$data), method = "stable", 
+                  verbose = FALSE)
+            }
+        }
+        else if (local_type == "usr") {
+            if (cpdag) {
+                pc.skel <- pc(suffStat = param, indepTest = usrCItest, 
+                  alpha = alpha, labels = colnames(param$data), 
+                  verbose = FALSE)
+            }
+            else {
+                pc.skel <- pcalg::skeleton(suffStat = param, 
+                  indepTest = usrCItest, alpha = alpha, labels = colnames(param$data), 
+                  verbose = FALSE)
+            }
+        }
+        g <- pc.skel@graph
+        startspace <- 1 * (graph2m(g))
+    }
+    return(startspace)
+}
