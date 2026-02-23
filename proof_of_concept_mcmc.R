@@ -4,9 +4,6 @@
 require(BiDAG) ## for DAG sampling
 require(Bestie) ## for intervention effects
 
-require("excel.link")
-require(readxl)
-require(corrplot)
 require(dplyr)
 require(tidyverse)
 require(magrittr)
@@ -16,76 +13,106 @@ require(parallelly)
 require(DiagrammeR)
 require(DiagrammeRsvg) ## for exporting svg for plotting to file
 require(rsvg) ## for converting svg to png
+require(dirichletprocess)
 
 # load functions script
-source("functions.R")
+source("fns.R")
 
-# load env variables
-require(dotenv)
-load_dot_env(file = ".env")
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load and prepare the data
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-# import data
-year = "2007"
-complete_data = importData(year=year)
+dataname = "gaussian"
+set.seed(12)
 
-# weights
-weights = complete_data$weight_score
+# data
+N <- 100  # number of samples
 
-inputData = preprocessData(data=complete_data)
+x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
+x2 <- rnorm(N, mean=sample(1:10)[1], sd=1)
+x3 <- rnorm(N, mean=sample(1:10)[1], sd=1)
+x4 <- 1.2 * x1 - 0.8 * x2 + rnorm(N)
 
-# dataname
-dataname <- paste0("data_", year)
+data <- data.frame(x1, x2, x3, x4)
+
+# Initiate params for DP and BGe
+n <- ncol(data)
+alpha_mu <- 1          
+alpha_w  <- n + alpha_mu + 1      
+t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
+
+# DP
+g0Priors <- list(
+  mu0    = rep(0, n),
+  Lambda = diag(n) / t,   # T = (1/t) I
+  kappa0 = alpha_mu,
+  nu     = alpha_w
+)
+
+scaled_data = scale(data) 
+n_iter = 100
+burnin = 30
+L = 10 # sample to take
+
+Gamma_list <- list()
+vars  <- c("x1","x2","x3","x4")
+for (child in vars){
+  parents <- vars[vars != child]
+  dp_data = scaled_data[,c(child, parents)]
+  dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+  dp <- Fit(dp, n_iter)
+  
+  Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
+  Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents)
+}
+
+
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## DAG sampling
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-nDAGs <- 100
+nDAGs <- 50
 batch <- 101:102
 nSeeds <- length(batch)
-labels4plot <- colnames(inputData)
-## equivalent to names(ncs4analysis)
-nNodes <- length(labels4plot)
-
-## Set edges blacklist
-blacklist = matrix(0, length(colnames(inputData)), length(colnames(inputData)))
-## childhood sexual abuse and bullying only admit incoming edges from sex and from each other
-blacklist[,c(which(colnames(inputData)=="Sex_abuse_before_16"), which(colnames(inputData)=="Bully"))] = 1
-blacklist[which(colnames(inputData)=="Sex"), c(which(colnames(inputData)=="Sex_abuse_before_16"), which(colnames(inputData)=="Bully"))] = 0
-blacklist[which(colnames(inputData)=="Bully"), which(colnames(inputData)=="Sex_abuse_before_16")] = 0
-blacklist[which(colnames(inputData)=="Sex_abuse_before_16"), which(colnames(inputData)=="Bully")] = 0
-## adult sexual abuse only admits incoming edges from sex, bullying and earlier abuse
-blacklist[, which(colnames(inputData)=="Sex_abuse_since_16")] = 1
-blacklist[which(colnames(inputData)=="Sex"), which(colnames(inputData)=="Sex_abuse_since_16")] = 0
-blacklist[which(colnames(inputData)=="Bully"), which(colnames(inputData)=="Sex_abuse_since_16")] = 0
-blacklist[which(colnames(inputData)=="Sex_abuse_before_16"), which(colnames(inputData)=="Sex_abuse_since_16")] = 0
-## while sex only admits outgoing edges since symptoms cannot cause it.
-blacklist[, which(colnames(inputData)=="Sex")] = 1
-
-
+labels4plot <- colnames(data)
 
 
 # use parallelization for sampling
 numCores <- min(length(batch), parallelly::availableCores())
 cl <- makeCluster(numCores)
+
+clusterEvalQ(cl, {
+  library(BiDAG)
+  #----------------------  overwrite functions ----------------------------------
+  source("fns.R")  # must define usrscoreparameters + usrDAGcorescore replacements
+  
+  unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
+  assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))
+  lockBinding("usrscoreparameters", asNamespace("BiDAG"))
+  
+  unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+  assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
+  lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+})
+
+# also make RNG reproducible across workers
+parallel::clusterSetRNGStream(cl, 123)
 registerDoParallel(cl)
 # sampling loop
 foreach(seednumber=batch) %dopar% {
   timing <- proc.time()
   print(paste("Seed is", seednumber))
-  sampleDAGs(inData=inputData,
-             scoretype="bde",
-             bdepar = list(edgepf = 1, chi = 1),
+  sampleDAGs(inData=scaled_data,
+             scoretype="usr",
+             usrpar = list(pctesttype = "bge",
+                           membershipp_list = Gamma_list,
+                           am = alpha_mu, 
+                           aw = alpha_w, 
+                           T0scale = t,
+                           edgepf = 1
+             ),
              nDigraphs=nDAGs,
              seed=seednumber,
-             dname=dataname,
-             weightvector=weights,
-             edgeBlacklist=blacklist,
-             bgnodes=c(which(colnames(inputData)=="Sex")))
-  computeEffects(n=nNodes, ## careful if files do not exist :)
-                 seed=seednumber,
-                 dname=dataname)
+             dname=dataname)
   print(proc.time() - timing)
 }
 stopCluster(cl)
@@ -93,48 +120,16 @@ stopCluster(cl)
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Draw DAG
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-data4plot <- loadsamples(seeds=batch, nn=nNodes, dname=dataname)
-allDAGs <- data4plot$alldigraphs
-allEffects <- data4plot$alleffs
-
-
-# plot the DAG
-graph2plot <- dagviz(allDAGs,
-                     grouped_nodes = list(c(which(colnames(inputData)=="Sex_abuse_before_16"), which(colnames(inputData)=="Bully"))),
-                     style_mat = matrix(1, nrow=length(labels4plot), ncol=length(labels4plot)))
-displayDAG(g2plot = graph2plot, figname=paste0("DAG_", dataname, ".png"))
-
-# prepare labels for effects plot
-labels_in_order = c("Sex",
-                    "Bully",
-                    "Sex_abuse_before_16",
-                    "Sex_abuse_since_16",
-                    "Paranoia",
-                    "Worry",
-                    "Mood_instability",
-                    "Fatigue",
-                    "Phobias",
-                    "Depression",
-                    "Irritability",
-                    "Concentration",
-                    "Cannabis",
-                    "Compulsions",
-                    "Hallucinations",
-                    "Obsessions",
-                    "Panic",
-                    "Physical_worry",
-                    "Sleep",
-                    "Somatic")
-
-labels_order = c()
-for (l in labels_in_order){
-  labels_order = c(labels_order, which(colnames(inputData)==l))
+alldigraphs <- vector("list", nDAGs * nSeeds) # to store the graphs
+for (nlevel in 1:nSeeds) {
+  seednumber <- batch[nlevel]
+  ## Retrieve sampled DAGs - DAG chain
+  load(file = paste0("./saveout/dagdraw", n, "seed", seednumber, dataname, ".RData"))
+  alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs[-1] # remove the starting point
 }
 
-# plot the effects
-plotEffects(effects4plot = allEffects, # effects4plot$allarray,
-            labs = labels4plot, 
-            sortlabs = labels_order, 
-            figname=paste0("causal_effects_", dataname, ".png"), 
-            title_text = "Distributions of Downstream Causal Effects")
-
+# plot the DAG
+graph2plot <- dagviz(alldigraphs,
+                     style_mat = matrix(1, nrow=2*n + 1, ncol=2*n)[1:n, 1:n],
+                     )
+displayDAG(g2plot = graph2plot, figname=paste0("./plots/DAG_", dataname, ".png"))

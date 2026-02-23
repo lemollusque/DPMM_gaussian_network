@@ -264,3 +264,157 @@ test_compare_dp_vs_bge <- function(usr_score_param,
   }
   equal
 }
+
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Sample DAGs with BiDAG
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+sampleDAGs <- function(inData, nDigraphs = 50, seed=101, dname="", ...){
+  n <- ncol(inData) # number of variables
+  stepsave <- 10*round(n*n*log(n)) ## thinning interval, 
+  ## to improve the properties of the chain (sample independence)
+  iterations <- nDigraphs*stepsave ## nDAGs is the desired size of the DAGs ensemble
+  
+  if(!dir.exists("./saveout")) {dir.create("./saveout")} ## create output folder if it doesn't exist
+  if(!file.exists(paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))){
+    # initialise the score object needed for later functions
+    scoreObject <- BiDAG::scoreparameters(data=inData, ..., 
+                                   nodeslabels = colnames(inData))
+    set.seed(seed) 
+    ## set the seed for the generation of random numbers (for reproducibility)
+    
+    # find the search space with iterative search
+    itFit <- BiDAG::iterativeMCMC(scoreObject, 
+                           startorder = sample(c(1:n)), 
+                           scoreout = TRUE) ## find iterative search space
+    searchSpace <- itFit$endspace
+    
+    # sample a starting DAG with order MCMC
+    # the default length of the chain is 6*n^2/log(n)
+    # orderSample$score is the score for the highest scoring DAG found
+    orderSample <- BiDAG::orderMCMC(scoreObject, 
+                             MAP = FALSE, 
+                             startspace = searchSpace, 
+                             startorder = sample(c(1:n)), 
+                             chainout = TRUE)
+    startDAG <- dplyr::last(orderSample$traceadd$incidence) # extract selected (last) DAG
+    startDAGscore <- dplyr::last(orderSample$trace) # extract score for the selected DAG
+    
+    # sample an ensemble of nDAGs DAGs from the posterior by using partition MCMC
+    partitionSample <- BiDAG::partitionMCMC(scoreObject, 
+                                     startspace = searchSpace, 
+                                     startDAG = startDAG, 
+                                     iterations = iterations, 
+                                     stepsave = stepsave)
+    
+    ## extract the collection of sampled DAGs
+    sampledDAGs <- partitionSample$traceadd$incidence 
+    DAGscores <-partitionSample$trace # extract their scores
+    
+    ## save the the collection of sampled DAGs and their scores to an .RData file
+    save(sampledDAGs, DAGscores, scoreObject,
+         file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
+  }
+}  
+
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Internal function to set-up plot style
+## Define some default plotting settings for the effects
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+setPlot <- function(dt = NULL, ...){
+  plot(dt, 
+       axes=FALSE, 
+       frame.plot=FALSE, 
+       xlab="", 
+       ylab="", 
+       main="",
+       ...)
+}
+
+
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Plot a summary DAG from a collection of samples
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+dagviz <- function(dags4plot, # roundprobs,
+                   daglabs = colnames(dags4plot[[1]]), # character vector of names
+                   nn = length(daglabs),
+                   grouped_nodes = NULL, # list(sample(order(daglabs), 2)),
+                   # each element in the above list 
+                   # will have its nodes placed inside a group
+                   ## It won't work with fewer than 2 nodes
+                   node_colour = "#1e90ff", # node colour
+                   font_colour = "#fffaf0", # font colour in nodes
+                   edge_colour = "#68228b", # edge colour
+                   edge_threshold = 0.1, # only show edges above this threshold
+                   group_colour = "#add8e6", # colour for group of nodes
+                   edge_width = 1.5, # edge width
+                   title_text = "Directed Acyclic Graph\n",
+                   # title text (use \n for line breaks)
+                   style_mat = matrix(c(1,2), nrow=2*nn + 1, ncol=2*nn)[1:nn, 1:nn],
+                   # checker-board for illustration
+                   edge_styles = c("solid", "dashed")
+                   ){
+  ## calculate plotting parameters from the DAG data
+  dagsarray <- round(simplify2array(lapply(dags4plot, as.matrix)), 8)
+  edgeprobs <- apply(dagsarray, c(1,2), mean)
+  roundprobs <- round(255*edgeprobs, 0) # rounded to 0-255 for line intensity
+  
+  ## Build graphviz code
+  graphcommand <- paste0("digraph G { \n node [color=\"", 
+                         node_colour, 
+                         "\", style=filled, fontcolor=\"", 
+                         font_colour, "\"]; \n ")
+  if (length(grouped_nodes) > 0) {
+    for (kk in 1:length(grouped_nodes)) {
+      node_text1 <- paste0(daglabs[grouped_nodes[[kk]]], 
+                           ";", collapse = " ")
+      node_text2 <- paste0(daglabs[grouped_nodes[[kk]]], 
+                           collapse = " ")
+      graphcommand <- paste0(graphcommand,
+                           "subgraph cluster", 
+                           kk, 
+                           " { \n bgcolor=\"", 
+                           group_colour, 
+                           "\" \n penwidth=0 \n", 
+                           node_text1,
+                           " \n {rank=same ", 
+                           node_text2,"} \n } \n ") 
+      }
+    }
+  for(ii in 1:nn){
+    for(jj in 1:nn){
+    if(edgeprobs[ii,jj] > edge_threshold){
+      graphcommand<-paste0(graphcommand, 
+                          daglabs[ii],
+                          " -> ", 
+                          daglabs[jj], 
+                          " [color=\"", 
+                          edge_colour, 
+                          as.hexmode(roundprobs[ii,jj]),
+                          "\", penwidth=", 
+                          edge_width, 
+                          ", style=", 
+                          edge_styles[style_mat[ii, jj]],"] \n")
+      }
+    }
+  }
+  grViz(paste0(graphcommand,"labelloc=\"t\";\n label= \"", title_text, "\";}"))
+}
+
+## filename for gv file if desired, not needed with DiagrammeR
+## gv_output <- "DAG.gv"
+## write(graphcommand, file=gv_output)
+
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## grViz() by itself produces a html output not visible in pdfs (even by setting always_allow_html: true in the YAML)
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Save summary DAG to a file and display on pdf
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+displayDAG <- function(g2plot, figname = "dataDAG.png"){
+  g2plot %>%
+    export_svg %>%
+    charToRaw %>%
+    rsvg_png(figname, width = 12000, height = 12000)
+  ## Increasing the size also increases the quality of the graph
+  knitr::include_graphics(figname)
+}

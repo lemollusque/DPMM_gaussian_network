@@ -2,3 +2,8 @@ Enrico
 Add_interact.rds
 Add.rds
 Gauss.rds
+recreate_results.R
+toyDAGanalysis.Rmd
+toyDAGfunctions.R
+saveout/
+plots/
