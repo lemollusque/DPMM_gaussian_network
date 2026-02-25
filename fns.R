@@ -43,6 +43,9 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, activ
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
+                                             dp_iter = 100,
+                                             dp_burnin = 30,
+                                             dp_n_sample = 10,
                                              membershipp_list = NULL,
                                              am = 1, 
                                              aw = NULL, 
@@ -52,6 +55,16 @@ usrscoreparameters <- function(initparam,
                                              )
                                        ) 
 {
+  
+  if (is.null(usrpar$dp_iter)) {
+    usrpar$dp_iter <- 100
+  }
+  if (is.null(usrpar$dp_burnin)) {
+    usrpar$dp_burnin <- 30
+  }
+  if (is.null(usrpar$dp_n_sample)) {
+    usrpar$dp_n_sample <- 10
+  }
   if (is.null(usrpar$membershipp_list) || length(usrpar$membershipp_list) == 0)
     stop("membershipp_list is missing or empty")
   if (is.null(usrpar$edgepf)) {
