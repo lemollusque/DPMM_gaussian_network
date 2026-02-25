@@ -30,7 +30,7 @@ dp_membership_probs <- function(dp, burnin, L){
   }
   return(probs_list)
 }
-add_membershipp <- function(membershipp_list, membershipp, child, parents, active) {
+add_membershipp <- function(membershipp_list, membershipp, child, parents, active=T) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
     membershipp = membershipp,
     child = child, 
@@ -86,9 +86,13 @@ usrscoreparameters <- function(initparam,
     initparam$logedgepmat <- log(usrpar$edgepmat)
   }
   
+  initparam$dp_iter <- usrpar$dp_iter
+  initparam$dp_burnin <- usrpar$dp_burnin
+  initparam$dp_n_sample <- usrpar$dp_n_sample
   initparam$pf <- usrpar$edgepf
   initparam$am <- usrpar$am
   initparam$aw <- usrpar$aw
+  initparam$T0scale <- usrpar$T0scale
   
   # only depending on n
   mu0 <- numeric(initparam$n)
