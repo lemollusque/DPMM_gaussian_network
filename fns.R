@@ -1,5 +1,6 @@
 #---------------------- membership prob matrix ----------------------
-dp_membership_probs <- function(dp, n_iter, burnin, L){
+dp_membership_probs <- function(dp, burnin, L){
+  n_iter = length(dp$alphaChain)
   # define samples to take
   post_idx <- seq(burnin + 1, n_iter)
   thin_idx <- round(seq(length(post_idx), 1, length.out = L))
