@@ -58,7 +58,7 @@ for (child in vars){
   dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
   dp <- Fit(dp, n_iter)
   
-  Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
+  Gamma_sample <- dp_membership_probs(dp, burnin, L)
   Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents)
 }
 
