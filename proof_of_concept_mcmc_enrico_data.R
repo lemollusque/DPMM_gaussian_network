@@ -65,7 +65,7 @@ for (child in vars){
   dp <- Fit(dp, n_iter)
   
   Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
-  Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents)
+  Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents, active=TRUE)
 }
 
 

@@ -29,12 +29,13 @@ dp_membership_probs <- function(dp, n_iter, burnin, L){
   }
   return(probs_list)
 }
-add_membershipp <- function(membershipp_list, membershipp, child, parents) {
+add_membershipp <- function(membershipp_list, membershipp, child, parents, active) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
     membershipp = membershipp,
     child = child, 
     parents = parents, 
-    vars = c(child, parents) 
+    vars = c(child, parents),
+    active = active
   )
   membershipp_list
 }
@@ -130,7 +131,8 @@ usrscoreparameters <- function(initparam,
       meta = list(
         child   = dp_membershipp_list[[d]]$child,
         parents = dp_membershipp_list[[d]]$parents,
-        vars    = dp_membershipp_list[[d]]$vars
+        vars    = dp_membershipp_list[[d]]$vars,
+        active  = dp_membershipp_list[[d]]$active
       ),
       scores = scoreparam_list
     )
@@ -143,7 +145,7 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   
   # extract needed score parameters
   needed <- c(j, parentnodes)
-  dp_scoreparam_list = Filter(function(e) all(param$labels[needed] %in% e$meta$vars), 
+  dp_scoreparam_list = Filter(function(e) all((param$labels[needed] %in% e$meta$vars) & e$meta$active), 
                            param$dp_scoreparam_list)
   # put all score parameters needed in one list.
   scoreparam_list = unlist(lapply(dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
