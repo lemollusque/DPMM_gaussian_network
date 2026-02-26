@@ -40,6 +40,32 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, activ
   )
   membershipp_list
 }
+adj_union_from_aliases <- function(aliases,  var_names) {
+  n = length(var_names)
+  adj <- matrix(0L, n, n, dimnames = list(var_names, var_names))
+  for (i in seq_len(n)) {
+    ai <- aliases[[i]]
+    if (is.null(ai)) next
+    if (!is.matrix(ai)) ai <- as.matrix(ai)
+    
+    # alias ids referenced for this node (drop NA/0 padding)
+    parents <- unique(as.integer(ai[!is.na(ai) & ai != 0]))
+    if (!length(parents)) next
+    
+    # Safety check: are these ids plausible row indices
+    if (max(parents) > n) {
+      stop(sprintf(
+        "For node %d: max alias id (%d) > n (%d).",
+        i, max(parents), i, n
+      ))
+    }
+    
+    
+    if (length(parents)) adj[parents, i] <- 1L
+  }
+  
+  adj
+}
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
