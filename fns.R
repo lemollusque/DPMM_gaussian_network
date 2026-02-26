@@ -233,6 +233,73 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   }
   mean(corescore_list)
 }
+update_score_param <- function(param, space){
+  for (i in 1:length(param$dp_scoreparam_list)){
+    # deactivate all
+    param$dp_scoreparam_list[[i]]$meta$active = F
+  }
+  # initiate new probability matrices
+  Gamma_list <- list()
+  for (child in colnames(space)){
+    parents <- names(which(space[ , child] == 1))
+    idx <- which(vapply(param$dp_scoreparam_list, function(e) {
+      identical(e$meta$child, child) &&
+        setequal(e$meta$parents, parents)
+    }, logical(1)))
+    
+    # activate
+    if (length(idx) > 0) {
+      if (length(idx) > 1) stop("multiple DP with same child parents")
+      for (j in idx) {
+        param$dp_scoreparam_list[[j]]$meta$active <- TRUE
+      }
+    }
+    
+    # create new DP
+    if (length(idx) == 0) {
+      dp_data = param$data[,c(child, parents)]
+      if (length(parents) == 0){
+        dp <-  DirichletProcessGaussian(dp_data,
+                                        alphaPriors = c(1, 20))
+      }
+      else{
+        n_col = ncol(dp_data)
+        g0Priors <- list(
+          mu0    = rep(0, n_col),
+          Lambda = diag(n_col) / param$T0scale,   # T = (1/t) I
+          kappa0 = param$am,
+          nu     = param$aw
+        )
+        
+        dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+      }
+      dp <- Fit(dp, param$dp_iter)
+      
+      Gamma_sample <- dp_membership_probs(dp, param$dp_burnin, param$dp_n_sample)
+      # add meta data in list
+      Gamma_list <- add_membershipp(Gamma_list, 
+                                    Gamma_sample, 
+                                    child=child, 
+                                    parents=parents, 
+                                    active=TRUE)
+      
+    }
+    
+  }
+  new_score = BiDAG::scoreparameters(scoretype = "usr", 
+                                     data = param$data, 
+                                     usrpar = list(pctesttype = "bge",
+                                                   membershipp_list = Gamma_list,
+                                                   am = param$am, 
+                                                   aw = param$aw, 
+                                                   T0scale = param$T0scale,
+                                                   edgepf = 1
+                                     )
+  )
+  # add new computed params to existing param
+  param$dp_scoreparam_list <- append(param$dp_scoreparam_list, new_score$dp_scoreparam_list)
+  param
+}
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
                                        dags, 
