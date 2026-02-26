@@ -5,6 +5,7 @@ require(BiDAG) ## for DAG sampling
 require(Bestie) ## for intervention effects
 
 require(dplyr)
+require(Matrix)
 require(tidyverse)
 require(magrittr)
 require(foreach)
@@ -18,7 +19,19 @@ require(dirichletprocess)
 # load functions script
 source("fns.R")
 
+#----------------------  overwrite functions ----------------------------------
+# replace BIDAG functions
+unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
+assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))
+lockBinding("usrscoreparameters", asNamespace("BiDAG"))
 
+unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
+lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+
+unlockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
+assign("iterativeMCMCplus1", iterativeMCMCplus1, envir = asNamespace("BiDAG"))
+lockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load and prepare the data
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -119,6 +132,10 @@ clusterEvalQ(cl, {
   unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
   assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
   lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
+  
+  unlockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
+  assign("iterativeMCMCplus1", iterativeMCMCplus1, envir = asNamespace("BiDAG"))
+  lockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
 })
 
 # also make RNG reproducible across workers

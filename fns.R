@@ -326,6 +326,284 @@ update_score_param <- function(param, space){
   param$dp_scoreparam_list <- append(param$dp_scoreparam_list, new_score$dp_scoreparam_list)
   param
 }
+iterativeMCMCplus1 <- function (param, iterations, stepsave, plus1it = NULL, MAP = TRUE, 
+    posterior = 0.5, startorder = NULL, moveprobs, softlimit = 9, 
+    hardlimit = 14, chainout = FALSE, scoreout = FALSE, startspace = NULL, 
+    blacklist = NULL, gamma = 1, verbose = FALSE, alpha = NULL, 
+    cpdag = FALSE, mergecp = "skeleton", addspace = NULL, scoretable = NULL, 
+    accum, alphainit = NULL, compress = TRUE) 
+{
+    n <- param$n
+    nsmall <- param$nsmall
+    matsize <- ifelse(param$DBN, n + nsmall, n)
+    objsizes <- list()
+    maxlist <- list()
+    maxobj <- list()
+    updatenodeslist <- list()
+    MCMCtraces <- list()
+    if (!param$DBN) {
+        if (param$bgn != 0) {
+            updatenodes <- c(1:n)[-param$bgnodes]
+        }
+        else {
+            updatenodes <- c(1:n)
+        }
+    }
+    else {
+        updatenodes <- c(1:nsmall)
+    }
+    if (is.null(blacklist)) {
+        blacklist <- matrix(0, nrow = matsize, ncol = matsize)
+    }
+    diag(blacklist) <- 1
+    if (!is.null(param$bgnodes)) {
+        for (i in param$bgnodes) {
+            blacklist[, i] <- 1
+        }
+    }
+    if (!is.null(scoretable)) {
+        startskel <- scoretable$adjacency
+        blacklist <- scoretable$blacklist
+        scoretable <- scoretable$tables
+    }
+    else {
+        if (is.null(startspace)) {
+            startspace <- BiDAG:::definestartspace(alpha, param, cpdag = cpdag, 
+                algo = "pc", alphainit = alphainit)
+        }
+        startskeleton <- 1 * (startspace & !blacklist)
+        if (!is.null(addspace)) {
+            startskel <- 1 * ((addspace | startskeleton) & !blacklist)
+        }
+        else {
+            startskel <- startskeleton
+        }
+    }
+    blacklistparents <- list()
+    for (i in 1:matsize) {
+        blacklistparents[[i]] <- which(blacklist[, i] == 1)
+    }
+    if (verbose) {
+        cat(paste("maximum parent set size is", max(apply(startskel, 
+            2, sum))), "\n")
+    }
+    if (max(apply(startskel, 2, sum)) > hardlimit) {
+        stop("the size of maximal parent set is higher that the hardlimit; redifine the search space or increase the hardlimit!")
+    }
+    maxorder <- startorder
+    ptab <- BiDAG:::listpossibleparents.PC.aliases(startskel, isgraphNEL = FALSE, 
+        n, updatenodes)
+    if (verbose) {
+        cat("core space defined, score table are being computed \n")
+        flush.console()
+    }
+    parenttable <- ptab$parenttable
+    aliases <- ptab$aliases
+    numberofparentsvec <- ptab$numberofparentsvec
+    numparents <- ptab$numparents
+    plus1lists <- BiDAG:::PLUS1(matsize, aliases, updatenodes, blacklistparents)
+
+    # custom: compute dp containing all nodes with all possible parents
+    max_adj <- adj_union_from_aliases(plus1lists$aliases, param$labels)
+    #str(plus1lists$aliases)
+    cat(max_adj)
+    param <- update_score_param(param, max_adj)
+
+    rowmaps <- BiDAG:::parentsmapping(parenttable, numberofparentsvec, 
+        n, updatenodes)
+    if (is.null(scoretable)) {
+        scoretable <- BiDAG:::scorepossibleparents.PLUS1(parenttable = parenttable, 
+            plus1lists = plus1lists, n = n, param = param, updatenodes = updatenodes, 
+            rowmaps, numparents, numberofparentsvec)
+    }
+    posetparenttable <- BiDAG:::poset(parenttable, numberofparentsvec, 
+        rowmaps, n, updatenodes)
+    if (MAP == TRUE) {
+        maxmatrices <- BiDAG:::posetscoremax(posetparenttable, scoretable, 
+            numberofparentsvec, rowmaps, n, plus1lists = plus1lists, 
+            updatenodes)
+    }
+    else {
+        bannedscore <- BiDAG:::poset.scores(posetparenttable, scoretable, 
+            ptab$numberofparentsvec, rowmaps, n, plus1lists = plus1lists, 
+            ptab$numparents, updatenodes)
+    }
+    oldadj <- startskeleton
+    i <- 1
+    if (is.null(plus1it)) 
+        plus1it <- 100
+    while (length(updatenodes) > 0 & i <= plus1it) {
+        if (i > 1) {
+            newptab <- BiDAG:::listpossibleparents.PC.aliases(newadj, 
+                isgraphNEL = FALSE, n, updatenodes)
+            parenttable[updatenodes] <- newptab$parenttable[updatenodes]
+            aliases[updatenodes] <- newptab$aliases[updatenodes]
+            numberofparentsvec[updatenodes] <- newptab$numberofparentsvec[updatenodes]
+            numparents[updatenodes] <- newptab$numparents[updatenodes]
+            newplus1lists <- BiDAG:::PLUS1(matsize, aliases, updatenodes, 
+                blacklistparents)
+            plus1lists$mask[updatenodes] <- newplus1lists$mask[updatenodes]
+            plus1lists$parents[updatenodes] <- newplus1lists$parents[updatenodes]
+            plus1lists$aliases[updatenodes] <- newplus1lists$aliases[updatenodes]
+            rowmaps[updatenodes] <- BiDAG:::parentsmapping(parenttable, 
+                numberofparentsvec, n, updatenodes)[updatenodes]
+            scoretable[updatenodes] <- BiDAG:::scorepossibleparents.PLUS1(parenttable, 
+                plus1lists, n, param, updatenodes, rowmaps, numparents, 
+                numberofparentsvec)[updatenodes]
+            posetparenttable[updatenodes] <- BiDAG:::poset(parenttable, 
+                numberofparentsvec, rowmaps, n, updatenodes)[updatenodes]
+            if (MAP) {
+                newmaxmatrices <- BiDAG:::posetscoremax(posetparenttable, 
+                  scoretable, numberofparentsvec, rowmaps, n, 
+                  plus1lists = plus1lists, updatenodes)
+                maxmatrices$maxmatrix[updatenodes] <- newmaxmatrices$maxmatrix[updatenodes]
+                maxmatrices$maxrow[updatenodes] <- newmaxmatrices$maxrow[updatenodes]
+            }
+            else {
+                newbannedscore <- BiDAG:::poset.scores(posetparenttable, 
+                  scoretable, numberofparentsvec, rowmaps, n, 
+                  plus1lists = plus1lists, numparents, updatenodes)
+                bannedscore[updatenodes] <- newbannedscore[updatenodes]
+            }
+            if (verbose) {
+                cat(paste("search space expansion", i, "\n"))
+                flush.console()
+            }
+        }
+        else {
+            if (verbose) {
+                cat(paste("score tables completed, iterative MCMC is running", 
+                  "\n"))
+                flush.console()
+            }
+        }
+        if (MAP) {
+            MCMCresult <- BiDAG:::orderMCMCplus1max(n, nsmall, startorder, 
+                iterations, stepsave, moveprobs, parenttable, 
+                scoretable, aliases, numparents, rowmaps, plus1lists, 
+                maxmatrices, numberofparentsvec, gamma = gamma, 
+                bgnodes = param$bgnodes, matsize = matsize, chainout = chainout, 
+                compress = compress)
+        }
+        else {
+            MCMCresult <- BiDAG:::orderMCMCplus1(n, nsmall, startorder, 
+                iterations, stepsave, moveprobs, parenttable, 
+                scoretable, aliases, numparents, rowmaps, plus1lists, 
+                bannedscore, numberofparentsvec, gamma = gamma, 
+                bgnodes = param$bgnodes, matsize = matsize, chainout = TRUE, 
+                compress = compress)
+        }
+        MCMCtraces$DAGscores[[i]] <- MCMCresult$DAGscores
+        if (chainout) {
+            if (param$DBN) {
+                MCMCtraces$incidence[[i]] <- lapply(MCMCresult$incidence, 
+                  function(x) DBNtransform(x, param = param))
+                MCMCtraces$orders[[i]] <- lapply(MCMCresult$orders, 
+                  order2var, varnames = param$firstslice$labels)
+            }
+            else {
+                MCMCtraces$incidence[[i]] <- lapply(MCMCresult$incidence, 
+                  function(x) assignLabels(x, param$labels))
+                MCMCtraces$orders[[i]] <- lapply(MCMCresult$orders, 
+                  order2var, varnames = param$labels)
+            }
+            MCMCtraces$orderscores[[i]] <- MCMCresult$orderscores
+        }
+        maxobj <- BiDAG:::storemaxMCMC(MCMCresult, param)
+        maxlist[[i]] <- maxobj
+        maxN <- which.max(MCMCresult$DAGscores)
+        if (i > 1) {
+            if (maxobj$score > maxscore) {
+                maxDAG <- maxobj$DAG
+                maxorder <- maxobj$order
+                maxscore <- maxobj$score
+                maxit <- i
+            }
+        }
+        else {
+            maxDAG <- maxobj$DAG
+            maxscore <- maxobj$score
+            maxorder <- maxobj$order
+            maxit <- 1
+        }
+        if (MAP) {
+            newadj <- BiDAG:::newspacemap(n, startskeleton, oldadj, softlimit, 
+                hardlimit, blacklist, maxdag = MCMCresult$maxdag, 
+                mergetype = mergecp, accum = accum)
+        }
+        else {
+            newadj <- BiDAG:::newspaceskel(n, startskeleton, oldadj, 
+                softlimit, hardlimit, posterior, blacklist, MCMCtrace = MCMCresult[[1]], 
+                mergetype = mergecp)
+        }
+        updatenodes <- which(apply(newadj == oldadj, 2, all) == 
+            FALSE)
+        updatenodeslist[[i]] <- updatenodes
+        if (is.null(plus1it)) {
+            oldadj <- newadj
+        }
+        else if (i < plus1it) {
+            oldadj <- newadj
+        }
+        else if (!scoreout) {
+            oldadj <- newadj
+        }
+        startorder <- c(MCMCresult$orders[[maxN]], param$bgnodes)
+        i <- i + 1
+    }
+    addedge <- sum(newadj) - sum(startskeleton)
+    result <- list()
+    if (scoreout) {
+        if (chainout) {
+            output <- 4
+        }
+        else {
+            output <- 3
+        }
+    }
+    else {
+        if (chainout) {
+            output <- 2
+        }
+        else {
+            output <- 1
+        }
+    }
+    result$maxtrace <- maxlist
+    result$DAG <- maxobj$DAG
+    result$CPDAG <- Matrix(graph2m(pcalg::dag2cpdag(m2graph(result$DAG))), 
+        sparse = TRUE)
+    result$score <- maxobj$score
+    result$maxorder <- maxobj$order
+    result$trace <- MCMCtraces$DAGscores
+    MCMCtraces$DAGscores <- NULL
+    if (param$DBN) {
+        result$startspace <- BiDAG:::DBNtransform(startskeleton, param)
+        result$endspace <- BiDAG:::DBNtransform(oldadj, param)
+    }
+    else {
+        result$startspace <- startskeleton
+        result$endspace <- oldadj
+    }
+    switch(as.character(output), `1` = {
+    }, `2` = {
+        result$traceadd <- MCMCtraces
+    }, `3` = {
+        result$scoretable <- list()
+        result$scoretable$adjacency <- result$endspace
+        result$scoretable$tables <- scoretable
+        result$scoretable$blacklist <- blacklist
+        attr(result$scoretable, "class") <- "scorespace"
+    }, `4` = {
+        result$traceadd <- MCMCtraces
+        result$scoretable <- list()
+        result$scoretable$adjacency <- result$endspace
+        result$scoretable$tables <- scoretable
+        result$scoretable$blacklist <- blacklist
+        attr(result$scoretable, "class") <- "scorespace"
+    })
+    return(result)
+}
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
                                        dags, 
