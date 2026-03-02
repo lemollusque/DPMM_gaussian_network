@@ -28,10 +28,6 @@ lockBinding("usrscoreparameters", asNamespace("BiDAG"))
 unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
 lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
-
-unlockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
-assign("iterativeMCMCplus1", iterativeMCMCplus1, envir = asNamespace("BiDAG"))
-lockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load and prepare the data
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -76,9 +72,18 @@ pc.skel = pcalg::pc(suffStat = list(C = cormat,
 g <- pc.skel@graph
 startspace <- 1 * (graph2m(g))
 
+# start from fully connected:
+vars  <- c("x1","x2","x3","x4")
+startspace <- matrix(c(
+  0,1,1,1,
+  1,0,1,1,
+  1,1,0,1,
+  1,1,1,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
 
 Gamma_list <- list()
-vars  <- c("x1","x2","x3","x4")
 for (child in vars){
   parents <- names(which(startspace[ , child] == 1))
   dp_data = scaled_data[,c(child, parents)]
@@ -99,14 +104,13 @@ for (child in vars){
   }
   dp <- Fit(dp, n_iter)
   
-  Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
+  Gamma_sample <- dp_membership_probs(dp, burnin, L)
   Gamma_list <- add_membershipp(Gamma_list, 
                                 Gamma_sample, 
                                 child=child, 
                                 parents=parents, 
                                 active=TRUE)
 }
-
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## DAG sampling
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -121,7 +125,6 @@ numCores <- min(length(batch), parallelly::availableCores())
 cl <- makeCluster(numCores)
 
 clusterEvalQ(cl, {
-  library(BiDAG)
   #----------------------  overwrite functions ----------------------------------
   source("fns.R")  
   
@@ -132,10 +135,6 @@ clusterEvalQ(cl, {
   unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
   assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
   lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
-  
-  unlockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
-  assign("iterativeMCMCplus1", iterativeMCMCplus1, envir = asNamespace("BiDAG"))
-  lockBinding("iterativeMCMCplus1", asNamespace("BiDAG"))
 })
 
 # also make RNG reproducible across workers
