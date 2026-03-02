@@ -17,17 +17,9 @@ require(rsvg) ## for converting svg to png
 require(dirichletprocess)
 
 # load functions script
+source("dualPC.R")
 source("fns.R")
 
-#----------------------  overwrite functions ----------------------------------
-# replace BIDAG functions
-unlockBinding("usrscoreparameters", asNamespace("BiDAG"))
-assign("usrscoreparameters", usrscoreparameters, envir = asNamespace("BiDAG"))
-lockBinding("usrscoreparameters", asNamespace("BiDAG"))
-
-unlockBinding("usrDAGcorescore", asNamespace("BiDAG"))
-assign("usrDAGcorescore", usrDAGcorescore, envir = asNamespace("BiDAG"))
-lockBinding("usrDAGcorescore", asNamespace("BiDAG"))
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load and prepare the data
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -36,6 +28,7 @@ set.seed(12)
 
 # data
 N <- 100  # number of samples
+vars  <- c("x1","x2","x3","x4")
 
 x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
 x2 <- rnorm(N, mean=sample(1:10)[1], sd=1)
@@ -64,16 +57,9 @@ burnin = 30
 L = 10 # sample to take
 
 cormat <- cor(scaled_data)
-pc.skel = pcalg::pc(suffStat = list(C = cormat, 
-                          n = N), indepTest = pcalg::gaussCItest, alpha = 0.05, 
-          labels = colnames(scaled_data), skel.method = "stable", 
-          verbose = FALSE)
-
-g <- pc.skel@graph
-startspace <- 1 * (graph2m(g))
+startspace <- dual_pc(cormat, nrow(scaled_data), alpha = 0.05, skeleton = T)
 
 # start from fully connected:
-vars  <- c("x1","x2","x3","x4")
 startspace <- matrix(c(
   0,1,1,1,
   1,0,1,1,
