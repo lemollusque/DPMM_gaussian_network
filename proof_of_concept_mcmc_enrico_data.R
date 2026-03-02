@@ -18,6 +18,7 @@ require(dirichletprocess)
 # load functions script
 source("fns.R")
 source("Fourier_fns.R")
+source("dualPC.R")
 
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -56,19 +57,47 @@ n_iter = 100
 burnin = 30
 L = 10 # sample to take
 
+cormat <- cor(scaled_data)
+startspace <- dual_pc(cormat, nrow(scaled_data), alpha = 0.05, skeleton = T)
+
+# start from fully connected:
+startspace <- matrix(c(
+  0,1,1,1,
+  1,0,1,1,
+  1,1,0,1,
+  1,1,1,0
+), 4, byrow=TRUE,
+dimnames=list(vars, vars))
+
+
 Gamma_list <- list()
-vars  <- c("x1","x2","x3","x4")
 for (child in vars){
-  parents <- vars[vars != child]
+  parents <- names(which(startspace[ , child] == 1))
   dp_data = scaled_data[,c(child, parents)]
-  dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+  if (length(parents) == 0){
+    dp <-  DirichletProcessGaussian(dp_data,
+                                    alphaPriors = c(1, 20))
+  }
+  else{
+    n_col = ncol(dp_data)
+    g0Priors <- list(
+      mu0    = rep(0, n_col),
+      Lambda = diag(n_col) / t,   # T = (1/t) I
+      kappa0 = alpha_mu,
+      nu     = alpha_w
+    )
+    
+    dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+  }
   dp <- Fit(dp, n_iter)
   
-  Gamma_sample <- dp_membership_probs(dp, n_iter, burnin, L)
-  Gamma_list <- add_membershipp(Gamma_list, Gamma_sample, child=child, parents=parents, active=TRUE)
+  Gamma_sample <- dp_membership_probs(dp, burnin, L)
+  Gamma_list <- add_membershipp(Gamma_list, 
+                                Gamma_sample, 
+                                child=child, 
+                                parents=parents, 
+                                active=TRUE)
 }
-
-
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## DAG sampling
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -83,7 +112,6 @@ numCores <- min(length(batch), parallelly::availableCores())
 cl <- makeCluster(numCores)
 
 clusterEvalQ(cl, {
-  library(BiDAG)
   #----------------------  overwrite functions ----------------------------------
   source("fns.R")  # must define usrscoreparameters + usrDAGcorescore replacements
   
