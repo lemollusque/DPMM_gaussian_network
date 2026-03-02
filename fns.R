@@ -184,6 +184,7 @@ usrscoreparameters <- function(initparam,
   initparam
 }
 usrDAGcorescore <- function (j, parentnodes, n, param) {
+  cat("Calculating score for node", j, "with parents", parentnodes, "\n")
   # not depending on cluster param
   lp <- length(parentnodes)
   
@@ -194,6 +195,7 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   # put all score parameters needed in one list.
   scoreparam_list = unlist(lapply(dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
   n_score = length(scoreparam_list)
+  cat("Found", n_score, "score parameter sets for node", j, "\n")
   corescore_list  <- numeric(n_score)
   for (s in 1:n_score){
     scoreparam = scoreparam_list[[s]]
@@ -602,6 +604,147 @@ iterativeMCMCplus1 <- function (param, iterations, stepsave, plus1it = NULL, MAP
         result$scoretable$blacklist <- blacklist
         attr(result$scoretable, "class") <- "scorespace"
     })
+    result$param <- param
+    return(result)
+}
+iterativeMCMC <- function (scorepar, MAP = TRUE, posterior = 0.5, softlimit = 9, 
+    hardlimit = 12, alpha = 0.05, gamma = 1, verbose = TRUE, 
+    chainout = FALSE, scoreout = FALSE, cpdag = FALSE, mergetype = "skeleton", 
+    iterations = NULL, moveprobs = NULL, stepsave = NULL, startorder = NULL, 
+    accum = FALSE, compress = TRUE, plus1it = NULL, startspace = NULL, 
+    blacklist = NULL, addspace = NULL, scoretable = NULL, alphainit = NULL) 
+{
+    if (is.null(moveprobs)) {
+        prob1 <- 99
+        if (scorepar$nsmall > 3) {
+            prob1 <- round(6 * 99 * scorepar$nsmall/(scorepar$nsmall^2 + 
+                10 * scorepar$nsmall - 24))
+        }
+        prob1 <- prob1/100
+        moveprobs <- c(prob1, 0.99 - prob1, 0.01)
+        moveprobs <- moveprobs/sum(moveprobs)
+        moveprobs <- c(moveprobs[c(1, 2)], 0, moveprobs[3])
+    }
+    if (is.null(iterations)) {
+        if (scorepar$nsmall < 26) {
+            iterations <- 25000
+        }
+        else {
+            iterations <- (3.5 * scorepar$nsmall * scorepar$nsmall * 
+                log(scorepar$nsmall)) - (3.5 * scorepar$nsmall * 
+                scorepar$nsmall * log(scorepar$nsmall))%%1000
+        }
+    }
+    if (is.null(stepsave)) {
+        stepsave <- floor(iterations/1000)
+    }
+    ordercheck <- checkstartorder(startorder, varnames = scorepar$labels.short, 
+        mainnodes = scorepar$mainnodes, bgnodes = scorepar$static, 
+        DBN = scorepar$DBN, split = scorepar$split)
+    if (ordercheck$errorflag) {
+        stop(ordercheck$message)
+    }
+    else {
+        startorder <- ordercheck$order
+    }
+    if (scorepar$DBN) {
+        if (!is.null(blacklist)) {
+            blacklist <- DBNbacktransform(blacklist, scorepar)
+        }
+        if (!is.null(startspace)) {
+            startspace <- DBNbacktransform(startspace, scorepar)
+        }
+        if (!is.null(addspace)) {
+            addspace <- DBNbacktransform(addspace, scorepar)
+        }
+        if (scorepar$split) {
+            if (scorepar$MDAG) {
+                param1 <- scorepar$paramsets[[scorepar$nsets]]
+                param2 <- scorepar$paramsets[[1]]
+                param2$paramsets <- scorepar$paramsets[1:(scorepar$nsets - 
+                  1)]
+                param2$MDAG <- TRUE
+            }
+            else {
+                param1 <- scorepar$firstslice
+                param2 <- scorepar$otherslices
+            }
+            if (scoreout | !is.null(scoretable)) {
+                cat("option scoreout always equals FALSE for DBNs with samestruct=FALSE, scoretable parameter is ignored \n")
+            }
+            cat("learning initial structure...\n")
+            result.init <- iterativeMCMCplus1(param = param1, 
+                iterations, stepsave, plus1it = plus1it, MAP = MAP, 
+                posterior = posterior, alpha = alpha, cpdag = cpdag, 
+                moveprobs = moveprobs, softlimit = softlimit, 
+                hardlimit = hardlimit, startspace = startspace$init, 
+                blacklist = blacklist$init, gamma = gamma, verbose = verbose, 
+                chainout = chainout, scoreout = FALSE, mergecp = mergetype, 
+                addspace = addspace$init, scoretable = NULL, 
+                startorder = startorder$init, accum = accum, 
+                alphainit = alphainit, compress = compress)
+            cat("learning transition structure...\n")
+            result.trans <- iterativeMCMCplus1(param = param2, 
+                iterations, stepsave, plus1it = plus1it, MAP = MAP, 
+                posterior = posterior, alpha = alpha, cpdag = cpdag, 
+                moveprobs = moveprobs, softlimit = softlimit, 
+                hardlimit = hardlimit, startspace = startspace$trans, 
+                blacklist = blacklist$trans, gamma = gamma, verbose = verbose, 
+                chainout = chainout, scoreout = FALSE, mergecp = mergetype, 
+                addspace = addspace$trans, scoretable = NULL, 
+                startorder = startorder$trans, accum = accum, 
+                alphainit = alphainit, compress = compress)
+            result <- mergeDBNres.it(result.init, result.trans, 
+                scorepar)
+        }
+        else {
+            result <- iterativeMCMCplus1(param = scorepar, iterations, 
+                stepsave, plus1it = plus1it, MAP = MAP, posterior = posterior, 
+                alpha = alpha, cpdag = cpdag, moveprobs = moveprobs, 
+                softlimit = softlimit, hardlimit = hardlimit, 
+                startspace = startspace, blacklist = blacklist, 
+                gamma = gamma, verbose = verbose, chainout = chainout, 
+                scoreout = scoreout, mergecp = mergetype, addspace = addspace, 
+                scoretable = scoretable, startorder = startorder, 
+                accum = accum, alphainit = alphainit, compress = compress)
+        }
+    }
+    else {
+        result <- iterativeMCMCplus1(param = scorepar, iterations, 
+            stepsave, plus1it = plus1it, MAP = MAP, posterior = posterior, 
+            alpha = alpha, cpdag = cpdag, moveprobs = moveprobs, 
+            softlimit = softlimit, hardlimit = hardlimit, startspace = startspace, 
+            blacklist = blacklist, gamma = gamma, verbose = verbose, 
+            chainout = chainout, scoreout = scoreout, mergecp = mergetype, 
+            addspace = addspace, scoretable = scoretable, startorder = startorder, 
+            accum = accum, compress = compress)
+    }
+    result$info <- list()
+    result$info$DBN <- scorepar$DBN
+    if (scorepar$DBN) {
+        result$info$nsmall <- scorepar$nsmall
+        result$info$bgn <- scorepar$bgn
+        result$info$split <- scorepar$split
+    }
+    result$info$algo <- "iterative order MCMC"
+    if (is.null(startspace)) {
+        result$info$spacealgo <- "PC"
+    }
+    else {
+        result$info$spacealgo <- "user defined matrix"
+    }
+    result$info$iterations <- iterations
+    result$info$plus1it <- length(result$max)
+    result$info$samplesteps <- floor(iterations/stepsave) + 1
+    if (MAP) {
+        result$info$sampletype <- "MAP"
+    }
+    else {
+        result$info$sampletype <- "sample"
+        result$info$threshold <- posterior
+    }
+    result$info$fncall <- match.call()
+    attr(result, "class") <- "iterativeMCMC"
     return(result)
 }
 #----------------------  test functions ----------------------------------
