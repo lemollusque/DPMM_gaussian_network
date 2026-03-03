@@ -321,7 +321,7 @@ update_score_param <- function(param, space){
                                                    am = param$am, 
                                                    aw = param$aw, 
                                                    T0scale = param$T0scale,
-                                                   edgepf = 1
+                                                   edgepf = param$pf
                                      )
   )
   # add new computed params to existing param
