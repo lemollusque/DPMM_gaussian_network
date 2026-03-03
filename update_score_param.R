@@ -16,6 +16,7 @@ require(rsvg) ## for converting svg to png
 require(dirichletprocess)
 
 # load functions script
+source("dualPC.R")
 source("fns.R")
 
 
@@ -66,13 +67,7 @@ burnin = 30
 L = 10 # sample to take
 
 cormat <- cor(scaled_data)
-pc.skel = pcalg::pc(suffStat = list(C = cormat, 
-                          n = N), indepTest = pcalg::gaussCItest, alpha = 0.05, 
-          labels = colnames(scaled_data), skel.method = "stable", 
-          verbose = FALSE)
-
-g <- pc.skel@graph
-startspace <- 1 * (graph2m(g))
+startspace <- dual_pc(cormat, nrow(scaled_data), alpha = 0.05, skeleton = T)
 
 
 Gamma_list <- list()
