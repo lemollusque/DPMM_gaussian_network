@@ -122,8 +122,14 @@ new_space[2,1] = 1
 new_space[1,2] = 1
 
 
-new_score_param = update_score_param(usr_score_param, new_space)
 
+new_score_param = update_score_param_from_space(usr_score_param, new_space)
+
+
+new_new_score_param = update_score_param_from_childparents(new_score_param, 
+                                                           child=c("x1"),
+                                                           parents = c("x2", "x3")
+                                                           )
 ########################### score a DAG (check equivalence) ##################
 A_12 <- matrix(c(
   0, 1, 0, 0,
