@@ -1,14 +1,5 @@
-setwd("C:/Users/BASTIAN/Desktop/code/git_DPMM_gaussian_network/DPMM_gaussian_network")
-
-require(Bestie)
 library(BiDAG)
 library(matrixStats)
-library(kpcalg)
-library(rstan)
-library(bridgesampling)
-
-rstan_options(auto_write = TRUE)
-options(mc.cores = parallel::detectCores())
 
 source("Fourier_fns.R")
 source("BayesStanFns.R")
@@ -23,6 +14,7 @@ lambdas <- c(0, 0.5, 1)  # non-linearity; zero is linear
 dual <- T    # use dualPC
 n <- 10      # number of nodes
 N <- 100     # number of samples
+results <- data.frame()
 
 # Parameters for ROC curves
 bge.mus <- c(0.01, 0.1, 0.5, 2, 5)
@@ -30,17 +22,20 @@ gp.pars <- c(0.1, 0.5, 1, 10, 100)  # 0.1 is very slow
 dib.pars <- c(1, 1.25, 1.5, 1.75, 2)
 pc.pars <- c(0.004, 0.01, 0.05, 0.12, 0.3)
 
-results <- data.frame()
+print(lambdas)
 
 for(lambda in lambdas) {
-  
-  for(k in 2:2) {
+  print(paste("Lambda:", lambda))
+
+  for(k in 1:5) {
+    print(paste("Parameter:", k))
     bge.par <- bge.mus[k]
     gp.par <- gp.pars[k]
     dib.par <- dib.pars[k]
     pc.par <- pc.pars[k]
     
     for (i in 1:iter) {
+      print(paste("Iteration:", i))
       set.seed(init.seed+i)
       
       # Generate DAG & data
@@ -60,12 +55,11 @@ for(lambda in lambdas) {
       # Bge score, order
       bge.fit <- bge.partition.mcmc(bge.searchspace, order = T)
       results <- compare_results(bge.fit, c(bge.par, "BGe, order", lambda), results, truegraph)
-      print("1")
+      
       # GP score, partition
       gp.ofit <- GP.partition.mcmc(data, GP.searchspace, order = F)
       results <- compare_results(gp.ofit, c(gp.par, "GP, partition", lambda), results, truegraph)
       
-      print("2")
       # Laplace score, partition
       gp.ofit$weights <- NULL
       gp.ofit$time <- gp.ofit$time - gp.ofit$time2

@@ -1,8 +1,8 @@
 
 # Compile stan files
-Gauss_mod <- stan_model("Gauss.stan") 
-GP_mod <- stan_model("Add.stan") 
-GP_int_mod <- stan_model("Add_interact.stan") 
+Gauss_mod <- rstan::stan_model("Gauss.stan") 
+GP_mod <- rstan::stan_model("Add.stan") 
+GP_int_mod <- rstan::stan_model("Add_interact.stan") 
 
 # Laplace approximation of log marginal likelihood
 Laplace <- function(optim) {
@@ -16,7 +16,7 @@ Gauss.lap <- function(y) {
   Sdata <- list(N_obs = length(y), y_obs = y)
   init <- list(mu = 0, sigma = 1)
   
-  opt <- optimizing(Gauss_mod, data = Sdata, init = init, hessian = T)
+  opt <- rstan::optimizing(Gauss_mod, data = Sdata, init = init, hessian = T)
   Laplace(opt)
 }
 
@@ -27,16 +27,16 @@ GP.lap <- function(y, X, interact = FALSE) {
   Sdata <- list(N_obs = nrow(X), d = d, X = X, y_obs = y)
   
   init <- list(rho = as.array(rep(1, d)), mu = 0, sigma = 0.5)
-  opt <- optimizing(GP_mod, data = Sdata, init = init, hessian = T)
+  opt <- rstan::optimizing(GP_mod, data = Sdata, init = init, hessian = T)
   Laplace(opt)
 }
 
 # Bridgesampling for marginal likelihoods
 Gauss.mcmc <- function(y) {
   N <- length(y)
-  stanfit <- sampling(Gauss_mod, data = list(N_obs = N, y_obs = y), 
+  stanfit <- rstan::sampling(Gauss_mod, data = list(N_obs = N, y_obs = y), 
                       iter = 500, warmup = 200, chains = 1, refresh = 0)
-  bridge_sampler(stanfit, silent = TRUE)$logml
+  bridgesampling::bridge_sampler(stanfit, silent = TRUE)$logml
 }
 
 GP.mcmc <- function(y, X, interact = FALSE) { 
@@ -44,7 +44,7 @@ GP.mcmc <- function(y, X, interact = FALSE) {
   X <- as.matrix(X)
   d <- ncol(X)
   
-  stanfit <- sampling(GP_mod, data = list(N_obs = N, d = d, X = X, y_obs = y),  
+  stanfit <- rstan::sampling(GP_mod, data = list(N_obs = N, d = d, X = X, y_obs = y),  
                       iter = 500, warmup = 200, chains = 1, refresh = 0)
-  bridge_sampler(stanfit, silent = TRUE)$logml
+  bridgesampling::bridge_sampler(stanfit, silent = TRUE)$logml
 }
