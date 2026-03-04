@@ -28,7 +28,6 @@ set.seed(12)
 
 # data
 N <- 100  # number of samples
-vars  <- c("x1","x2","x3","x4")
 
 x1 <- rnorm(N, mean=sample(1:10)[1], sd=1)  
 x2 <- rnorm(N, mean=sample(1:10)[1], sd=1)
@@ -39,6 +38,8 @@ data <- data.frame(x1, x2, x3, x4)
 
 # Initiate params for DP and BGe
 n <- ncol(data)
+vars <- paste0("x", 1:n)
+
 alpha_mu <- 1          
 alpha_w  <- n + alpha_mu + 1      
 t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
@@ -60,13 +61,9 @@ cormat <- cor(scaled_data)
 startspace <- dual_pc(cormat, nrow(scaled_data), alpha = 0.05, skeleton = T)
 
 # start from fully connected:
-startspace <- matrix(c(
-  0,1,1,1,
-  1,0,1,1,
-  1,1,0,1,
-  1,1,1,0
-), 4, byrow=TRUE,
-dimnames=list(vars, vars))
+startspace <- matrix(1, n, n)
+diag(startspace) <- 0
+dimnames(startspace) <- list(vars, vars)
 
 
 Gamma_list <- list()
@@ -129,7 +126,7 @@ registerDoParallel(cl)
 # sampling loop
 foreach(seednumber=batch) %dopar% {
   timing <- proc.time()
-  print(paste("Seed is", seednumber))
+  cat(paste("Seed is", seednumber))
   sampleDAGs(inData=scaled_data,
              scoretype="usr",
              usrpar = list(pctesttype = "bge",
@@ -142,7 +139,7 @@ foreach(seednumber=batch) %dopar% {
              nDigraphs=nDAGs,
              seed=seednumber,
              dname=dataname)
-  print(proc.time() - timing)
+  cat(proc.time() - timing)
 }
 stopCluster(cl)
 

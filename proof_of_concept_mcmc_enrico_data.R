@@ -26,8 +26,8 @@ source("dualPC.R")
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 dataname = "fourier"
 set.seed(101)
-lambda <- 1
-n <- 4  # number of nodes
+lambda <- 10
+n <- 10  # number of nodes
 N <- 100  # number of samples
 
 myDAG <- pcalg::randomDAG(n, prob = 0.5, lB = 1, uB = 2) 
@@ -35,11 +35,10 @@ trueDAG <- as(myDAG, "matrix")
 truegraph <- 1*(trueDAG != 0)
 data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
 
-vars  <- c("x1","x2","x3","x4")
+vars <- paste0("x", 1:n)
 colnames(data) = vars
 
 # Initiate params for DP and BGe
-n <- ncol(data)
 alpha_mu <- 1          
 alpha_w  <- n + alpha_mu + 1      
 t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
@@ -53,7 +52,7 @@ g0Priors <- list(
 )
 
 scaled_data = scale(data) 
-n_iter = 100
+n_iter = 200
 burnin = 30
 L = 10 # sample to take
 
@@ -61,13 +60,9 @@ cormat <- cor(scaled_data)
 startspace <- dual_pc(cormat, nrow(scaled_data), alpha = 0.05, skeleton = T)
 
 # start from fully connected:
-startspace <- matrix(c(
-  0,1,1,1,
-  1,0,1,1,
-  1,1,0,1,
-  1,1,1,0
-), 4, byrow=TRUE,
-dimnames=list(vars, vars))
+startspace <- matrix(1, n, n)
+diag(startspace) <- 0
+dimnames(startspace) <- list(vars, vars)
 
 
 Gamma_list <- list()
@@ -101,8 +96,8 @@ for (child in vars){
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## DAG sampling
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-nDAGs <- 50
-batch <- 101:105
+nDAGs <- 100
+batch <- 101:120
 nSeeds <- length(batch)
 labels4plot <- colnames(data)
 
@@ -130,7 +125,7 @@ registerDoParallel(cl)
 # sampling loop
 foreach(seednumber=batch) %dopar% {
   timing <- proc.time()
-  print(paste("Seed is", seednumber))
+  cat(paste("Seed is", seednumber))
   sampleDAGs(inData=scaled_data,
              scoretype="usr",
              usrpar = list(pctesttype = "bge",
@@ -143,7 +138,7 @@ foreach(seednumber=batch) %dopar% {
              nDigraphs=nDAGs,
              seed=seednumber,
              dname=dataname)
-  print(proc.time() - timing)
+  cat(proc.time() - timing)
 }
 stopCluster(cl)
 
