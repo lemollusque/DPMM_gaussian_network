@@ -901,7 +901,92 @@ sampleDAGs <- function(inData, nDigraphs = 50, seed=101, dname="", ...){
          file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
   }
 }  
+set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(), bgepar = list()){
+  start <- Sys.time()
+  startspace <- NULL
+  
+  cor_mat <- cor(data)
+  if(dual) {
+    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+  }
+  else{
+    pc.skel = pcalg::pc(suffStat = list(C = cor_mat, 
+                          n = nrow(data)), indepTest = pcalg::gaussCItest, alpha = 0.05, 
+          labels = colnames(data), skel.method = "stable", 
+          verbose = FALSE)
 
+    g <- pc.skel@graph
+    startspace <- 1 * (graph2m(g))
+  }
+  
+  if(method == "DP") {
+    # create DPs and Gamma
+    Gamma_list <- list()
+    for (child in colnames(startspace)){
+      parents <- names(which(startspace[ , child] == 1))
+      dp_data = data[,c(child, parents)]
+      if (length(parents) == 0){
+        dp <-  DirichletProcessGaussian(dp_data,
+                                        alphaPriors = c(1, 20))
+      }
+      else{
+        n_col = ncol(dp_data)
+        g0Priors <- list(
+          mu0    = rep(0, n_col),
+          Lambda = diag(n_col) / usrpar$T0scale,   # T = (1/t) I
+          kappa0 = usrpar$am,
+          nu     = usrpar$aw
+        )
+        
+        dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+      }
+      dp <- Fit(dp, usrpar$n_iter)
+      
+      Gamma_sample <- dp_membership_probs(dp, usrpar$burnin, usrpar$L)
+      Gamma_list <- add_membershipp(Gamma_list, 
+                                    Gamma_sample, 
+                                    child=child, 
+                                    parents=parents, 
+                                    active=TRUE)
+    }
+    usrpar$membershipp_list = Gamma_list
+    score <- scoreparameters("usr", data, 
+                             usrpar = usrpar)
+  }
+  
+  if(method == "bge") {
+    score <- scoreparameters("bge", data, bgepar = bgepar)
+  }
+  searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
+                               verbose = F, scoreout = TRUE, alphainit = 0.01)
+  time <- Sys.time() - start
+  
+  list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
+       maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time)
+}
+DP.partition.mcmc <- function(searchspace, alpha = 0.05, 
+                               order = FALSE, burnin = 0.33, iterations = 600) {
+  start <- Sys.time()
+  Score <- searchspace$score
+  
+  if(order) {
+    dp.fit <- orderMCMC(Score, MAP = FALSE, chainout = TRUE, alpha = alpha, 
+                         startorder = searchspace$maxorder, scoretable = searchspace$scoretable,
+                         startspace = searchspace$endspace, iterations = iterations, stepsave = 4)
+  }
+  else {
+    dp.fit <- partitionMCMC(Score, alpha = alpha, startDAG = searchspace$DAG, 
+                             scoretable = searchspace$scoretable, startspace = searchspace$endspace,
+                             iterations = iterations, stepsave = 4)
+  }
+  toburn <- round(burnin * dp.fit$info$samplesteps)
+  
+  dp.fit$traceadd$incidence <- dp.fit$traceadd$incidence[-(1:toburn)]
+  time <- Sys.time() - start + searchspace$time
+  dp.fit$time <- as.numeric(time, units = "secs")
+  
+  return(dp.fit)
+}
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Internal function to set-up plot style
 ## Define some default plotting settings for the effects
