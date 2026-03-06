@@ -486,9 +486,16 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
   start <- Sys.time()
   startspace <- NULL
   
+  if(is.null(colnames(data))) {
+    colnames(data) <- sapply(c(1:ncol(data)), function(x) paste("v", x, sep = ""))
+  }
+  
   cor_mat <- cor(data)
   if(dual) {
     startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+    colnames(startspace) <- colnames(data)
+    row.names(startspace) <- colnames(data)
+
   }
   else{
     pc.skel = pcalg::pc(suffStat = list(C = cor_mat, 
