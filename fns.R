@@ -506,16 +506,18 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     g <- pc.skel@graph
     startspace <- 1 * (graph2m(g))
   }
-  
+ 
   if(method == "DP") {
+    startspace <- matrix(1, ncol(data), ncol(data), 
+                        dimnames=list(colnames(data), colnames(data)))
+    diag(startspace) <- 0
     # create DPs and Gamma
     Gamma_list <- list()
     for (child in colnames(startspace)){
       parents <- names(which(startspace[ , child] == 1))
       dp_data = data[,c(child, parents)]
       if (length(parents) == 0){
-        dp <-  DirichletProcessGaussian(dp_data,
-                                        alphaPriors = c(1, 20))
+        dp <-  DirichletProcessGaussian(dp_data)
       }
       else{
         n_col = ncol(dp_data)
@@ -528,7 +530,7 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
         
         dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
       }
-      dp <- Fit(dp, usrpar$n_iter)
+      dp <- Fit(dp, usrpar$dp_iter)
       
       Gamma_sample <- dp_membership_probs(dp, usrpar$burnin, usrpar$L)
       Gamma_list <- add_membershipp(Gamma_list, 
@@ -540,13 +542,15 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, 
                              usrpar = usrpar)
+    searchspace = list(scoretable = NULL, DAG = NULL, maxorder = NULL, endspace = startspace)
   }
   
   if(method == "bge") {
     score <- scoreparameters("bge", data, bgepar = bgepar)
-  }
-  searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
+    searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
                                verbose = F, scoreout = TRUE, alphainit = 0.01)
+  }
+  
   time <- Sys.time() - start
   
   list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
@@ -574,6 +578,29 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   dp.fit$time <- as.numeric(time, units = "secs")
   
   return(dp.fit)
+}
+bge.partition.mcmc <- function(searchspace, alpha = 0.05, 
+                               order = FALSE, burnin = 0.33, iterations = 600) {
+  start <- Sys.time()
+  BGEScore <- searchspace$score
+  
+  if(order) {
+    bge.fit <- orderMCMC(BGEScore, MAP = FALSE, chainout = TRUE, alpha = alpha, 
+                         startorder = searchspace$maxorder, scoretable = searchspace$scoretable,
+                         startspace = searchspace$endspace, iterations = iterations, stepsave = 4)
+  }
+  else {
+    bge.fit <- partitionMCMC(BGEScore, alpha = alpha, startDAG = searchspace$DAG, 
+                             scoretable = searchspace$scoretable, startspace = searchspace$endspace,
+                             iterations = iterations, stepsave = 4)
+  }
+  toburn <- round(burnin * bge.fit$info$samplesteps)
+  
+  bge.fit$traceadd$incidence <- bge.fit$traceadd$incidence[-(1:toburn)]
+  time <- Sys.time() - start + searchspace$time
+  bge.fit$time <- as.numeric(time, units = "secs")
+  
+  return(bge.fit)
 }
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Internal function to set-up plot style
