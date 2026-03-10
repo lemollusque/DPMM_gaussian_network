@@ -15,17 +15,28 @@ dp_membership_probs <- function(dp, burnin, L){
   
   
   probs_list <- vector("list", length(clusterParams_sample))
-  for (l in  1:L){
-    clusterParams = clusterParams_sample[[l]]
+  for (l in 1:L) {
+    clusterParams <- clusterParams_sample[[l]]
     pointsPerCluster <- pointsPerCluster_sample[[l]]
     numLabels <- length(pointsPerCluster)
     probs <- matrix(0, nrow = N, ncol = numLabels)
+
     for (i in seq_len(N)) {
-      probs[i, 1:numLabels] <- pointsPerCluster * 
-        Likelihood(mdObj, 
-                   y[i,, drop = FALSE], 
-                   clusterParams)
+      rowp <- pointsPerCluster *
+        Likelihood(mdObj, y[i, , drop = FALSE], clusterParams)
+
+      rowp[is.na(rowp)] <- 0
+      if (all(rowp == 0)) {
+          rowp <- rep_len(1, length(rowp))
+      }
+
+      probs[i, ] <- rowp
     }
+    
+    # keep only columns that are not all zero
+    col_sums <- colSums(probs)
+    probs <- probs[, col_sums > 0, drop = FALSE]
+
     probs_list[[l]] <- probs / rowSums(probs)
   }
   return(probs_list)
