@@ -38,13 +38,21 @@ for(lambda in lambdas) {
     
     for (i in 1:iter) {
       print(paste("Iteration:", i))
+      print(paste("computation: ", computing_done/computing_len))
       set.seed(init.seed+i)
       
       # Generate DAG & data
-      myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
-      trueDAG <- as(myDAG, "matrix")
-      truegraph <- 1*(trueDAG != 0)
-      data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
+      g <- er_dag(n, ad=3)
+      g <- sf_out(g)
+      truegraph <- randomize_graph(g)
+      
+      
+      model1 <- corr(g)
+      model2 <- corr(g)
+      
+      X1 <- simulate(model1$B, model1$O, N/2)
+      X2 <- simulate(model2$B, model2$O, N/2)
+      data <- rbind(standardize(X1), standardize(X2))
       
       # Set initial search spaces
       DP.searchspace = set.searchspace(data, 
@@ -54,9 +62,9 @@ for(lambda in lambdas) {
                                                      am = bge.par, 
                                                      aw = alpha_w, 
                                                      T0scale = t,
-                                                     dp_iter = 400,
-                                                     burnin = 200,
-                                                     L = 5,
+                                                     dp_iter = 100,
+                                                     burnin = 50,
+                                                     L = 10,
                                                      edgepf = 1
                                        )
       )
