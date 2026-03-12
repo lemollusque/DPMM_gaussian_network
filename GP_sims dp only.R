@@ -3,30 +3,36 @@ library(matrixStats)
 library(dirichletprocess)
 library(dplyr)
 library(ggplot2)
+library(foreach)
+library(doParallel)
+library(parallelly)
+library(mclust)
 
 source("Fourier_fns.R")
 source("comparison_algs.R")
 source("dualPC.R")
+source("dao.R")
 source("fns.R")
 # load functions script
 insertSource("fns.R", package = "BiDAG")
 
 
 
-
 init.seed <- 100
-iter <- 3  # number of simulations
-lambdas <- c(0, 0.5, 1)  # non-linearity; zero is linear
-dual <- T    # use dualPC
-n <- 10      # number of nodes
+iter <- 50  # number of simulations
+lambdas <- c(1)  # non-linearity; zero is linear
+dual <- F    # use dualPC
+n <- 4    # number of nodes
 N <- 100     # number of samples
 results <- data.frame()
 
 # Parameters for ROC curves
 bge.mus <- c(1)
 
-print(lambdas)
+computing_len = length(bge.mus) * iter * length(lambdas)
+computing_done = 1
 
+sink("logfile.txt")
 for(lambda in lambdas) {
   print(paste("Lambda:", lambda))
 
@@ -42,7 +48,7 @@ for(lambda in lambdas) {
       set.seed(init.seed+i)
       
       # Generate DAG & data
-      g <- er_dag(n, ad=3)
+      g <- er_dag(n, ad =3)
       g <- sf_out(g)
       truegraph <- randomize_graph(g)
       
@@ -50,9 +56,17 @@ for(lambda in lambdas) {
       model1 <- corr(g)
       model2 <- corr(g)
       
-      X1 <- simulate(model1$B, model1$O, N/2)
-      X2 <- simulate(model2$B, model2$O, N/2)
-      data <- rbind(standardize(X1), standardize(X2))
+      df <- 3
+      t_err <- function(n, var) {
+        rt(n, df=df) * sqrt(var * (df-2)/df)
+      }
+      X1 <- simulate(model1$B, model1$O, N/2, err = t_err)
+      X2 <- simulate(model2$B, model2$O, N/2, err = t_err)
+      
+      shift <- runif(ncol(X2), -2, 2)
+      X2 <- sweep(X2, 2, shift, "+")
+      
+      data <- standardize(rbind(X1, X2))
       
       # Set initial search spaces
       DP.searchspace = set.searchspace(data, 
@@ -68,6 +82,16 @@ for(lambda in lambdas) {
                                                      edgepf = 1
                                        )
       )
+      for (p in 1:length(DP.searchspace$score$dp_scoreparam_list)){
+        for ( s in 1:length(DP.searchspace$score$dp_scoreparam_list[[p]]$scores)){
+          if (DP.searchspace$score$dp_scoreparam_list[[p]]$scores[[s]]$K != 1){
+            cat(DP.searchspace$score$dp_scoreparam_list[[p]]$scores[[s]]$K)
+            
+          }
+        }
+      }
+      
+      
       bge.searchspace = set.searchspace(data, dual, "bge", bgepar = list(am = bge.par))
       
       # Bge score, partition
@@ -85,18 +109,23 @@ for(lambda in lambdas) {
       # DP score, order
       dp.fit <- DP.partition.mcmc(DP.searchspace, order = T)
       results <- compare_results(dp.fit, c(bge.par, "DP, order", lambda), results, truegraph)
+      
+      # for printing
+      computing_done = computing_done + 1
     }
   }
 }
 colnames(results) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P", 
                        "time", "parameter", "method", "lambda", "graph")
 saveRDS(results, "Results/Sims_Results_dp.rds")
+sink()
+
 
 # plots resutts
 keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")
 
 results_small <- results %>%
-  filter(graph == "dag", method %in% keep_methods) %>%
+  filter(graph == "pattern", method %in% keep_methods) %>%
   mutate(
     lambda = factor(as.character(round(as.numeric(lambda), 2)),
                     levels = c("1", "0.5", "0")),
@@ -110,7 +139,7 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
   geom_jitter(aes(group = method), width = 0.15, alpha = 0.7, size = 1.2) +
   facet_wrap(~ lambda, nrow = 1, labeller = labeller(lambda = \(x) paste0("λ = ", x))) +
-  coord_cartesian(ylim = c(0, 20)) +
+  coord_cartesian(ylim = c(0, 12)) +
   labs(x = NULL, y = "E=SHD") +
   theme_bw() +
   theme(
