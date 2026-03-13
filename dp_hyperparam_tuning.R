@@ -150,18 +150,14 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
 init.seed <- 100
 iter <- 3  # number of simulations per hyperparam
 n <- 4    # number of nodes
-N_samples <- list(50, 100, 200, 500)     # number of samples
+N_samples <- list(50, 200)     # number of samples
 
 dp_fits = 2
-dp_iter = 100
-burnin = 50
-L = 10
+dp_iter_list = list(50, 100, 200, 500)   
+
 
 alpha_grid <- list(
-  c(1, 1),
-  c(2, 4),
-  c(2, 2),
-  c(4, 2)
+  c(1, 1)
 )
 
 g0_grid <- list(
@@ -177,60 +173,68 @@ sink("logfile.txt")
 for (a in seq_along(alpha_grid)) {
   for (g in seq_along(g0_grid)) {
     for (sample in seq_along(N_samples)) {
-      
-      N = N_samples[[sample]]
-      
-      cat("Hyperparam setting:", counter, "\n")
-      cat("alpha =", paste(alpha_grid[[a]], collapse = ","), "\n")
-      cat("g0 =", g, "\n")
-      cat("N =", N, "\n")
-      
-      sim_results <- list()
-      
-      for (i in seq_len(iter)) {
-        cat("  Simulation:", i, "\n")
+      for (d in seq_along(dp_iter_list)) {
         
-        sim_results[[i]] <- run_one_simulation(
-          sim_id = i,
-          alpha_prior = alpha_grid[[a]],
-          g0_prior = g0_grid[[g]],
-          init.seed = init.seed,
-          n = n,
-          N = N,
-          dp_fits = dp_fits,
-          dp_iter = dp_iter,
-          burnin = burnin,
-          L = L
-        )
+        N = N_samples[[sample]]
+        dp_iter = dp_iter_list[[d]]
+        L = 10
+        burnin = dp_iter - L
+        
+        cat("Hyperparam setting:", counter, "\n")
+        cat("alpha =", paste(alpha_grid[[a]], collapse = ","), "\n")
+        cat("g0 =", g, "\n")
+        cat("dp_iter =", dp_iter, "\n")
+        cat("N =", N, "\n")
+        
+        sim_results <- list()
+        
+        for (i in seq_len(iter)) {
+          cat("  Simulation:", i, "\n")
+          
+          sim_results[[i]] <- run_one_simulation(
+            sim_id = i,
+            alpha_prior = alpha_grid[[a]],
+            g0_prior = g0_grid[[g]],
+            init.seed = init.seed,
+            n = n,
+            N = N,
+            dp_fits = dp_fits,
+            dp_iter = dp_iter,
+            burnin = burnin,
+            L = L
+          )
+        }
+        
+        sim_results_df <- bind_rows(sim_results)
+        hp_summary <- summarise_hyperparam(sim_results_df)
+        
+        hp_summary$N <- N
+        hp_summary$n <- n
+        
+        hp_summary$dp_iter <- dp_iter
+        
+        hp_summary$alpha_a <- alpha_grid[[a]][1]
+        hp_summary$alpha_b <- alpha_grid[[a]][2]
+        
+        hp_summary$g0_id <- g
+        hp_summary$kappa0 <- g0_grid[[g]]$kappa0
+        hp_summary$nu <- g0_grid[[g]]$nu
+        hp_summary$lambda_scale <- g0_grid[[g]]$Lambda[1,1]
+        
+        results <- bind_rows(results, hp_summary)
+        
+        all_sim_results[[counter]] <- sim_results_df %>%
+          mutate(
+            alpha_a = alpha_grid[[a]][1],
+            alpha_b = alpha_grid[[a]][2],
+            g0_id = g,
+            dp_iter = dp_iter,
+            N = N,
+            n = n
+          )
+        
+        counter <- counter + 1
       }
-      
-      sim_results_df <- bind_rows(sim_results)
-      hp_summary <- summarise_hyperparam(sim_results_df)
-      
-      hp_summary$N <- N
-      hp_summary$n <- n
-      
-      hp_summary$alpha_a <- alpha_grid[[a]][1]
-      hp_summary$alpha_b <- alpha_grid[[a]][2]
-      
-      hp_summary$g0_id <- g
-      hp_summary$kappa0 <- g0_grid[[g]]$kappa0
-      hp_summary$nu <- g0_grid[[g]]$nu
-      hp_summary$lambda_scale <- g0_grid[[g]]$Lambda[1,1]
-      
-      results <- bind_rows(results, hp_summary)
-      
-      all_sim_results[[counter]] <- sim_results_df %>%
-        mutate(
-          alpha_a = alpha_grid[[a]][1],
-          alpha_b = alpha_grid[[a]][2],
-          g0_id = g,
-          N = N,
-          n = n
-        )
-      
-      counter <- counter + 1
-      
     }
   }
 }
@@ -245,7 +249,7 @@ saveRDS(all_sim_results_df, "Results/hyper_param_sim_level_results.rds")
 write.xlsx(results, "Results/hyper_param_results.xlsx")
 write.xlsx(all_sim_results_df, "Results/hyper_param_sim_level_results.xlsx")
 
-ggplot(results, aes(x = interaction(alpha_a, alpha_b, g0_id),
+ggplot(results, aes(x = dp_iter,
                     y = hp_mean_ari)) +
   geom_point() +
   geom_line(aes(group = g0_id)) +
