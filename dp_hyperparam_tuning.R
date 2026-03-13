@@ -8,24 +8,10 @@ library(doParallel)
 library(parallelly)
 library(aricode)
 library(mclust)
+library(openxlsx)
 
 source("dao.R")
 source("fns.R")
-
-
-
-init.seed <- 100
-iter <- 3  # number of simulations per hyperparam
-n <- 4    # number of nodes
-N <- 100     # number of samples
-results <- data.frame()
-
-dp_fits = 2
-dp_iter = 100
-burnin = 50
-L = 10
-
-truth <- c(rep("X1", N/2), rep("X2", N/2))
 
 
 score_one_gamma <- function(Gamma_sample, truth) {
@@ -82,6 +68,8 @@ summarise_hyperparam <- function(df_sim) {
     hp_sd_score = sd(df_sim$mean_score),
     hp_mean_ari = mean(df_sim$mean_ari),
     hp_sd_ari = sd(df_sim$mean_ari),
+    hp_mean_nmi = mean(df_sim$mean_nmi),
+    hp_sd_nmi = sd(df_sim$mean_nmi),
     hp_mean_entropy = mean(df_sim$mean_entropy),
     hp_mean_same_mass = mean(df_sim$mean_same_mass),
     hp_mean_other_mass = mean(df_sim$mean_other_mass),
@@ -142,6 +130,7 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
         dp_fit = f,
         gamma_id = l,
         ari = sc$ari,
+        nmi = sc$nmi,
         same_mass = sc$same_mass,
         other_mass = sc$other_mass,
         entropy = sc$entropy,
@@ -157,6 +146,17 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
   sim_summary
 }
 
+
+init.seed <- 100
+iter <- 3  # number of simulations per hyperparam
+n <- 4    # number of nodes
+N_samples <- list(50, 100, 200, 500)     # number of samples
+
+dp_fits = 2
+dp_iter = 100
+burnin = 50
+L = 10
+
 alpha_grid <- list(
   c(1, 1),
   c(2, 4),
@@ -164,13 +164,8 @@ alpha_grid <- list(
   c(4, 2)
 )
 
-alpha_mu <- 1          
-alpha_w  <- n + alpha_mu + 1      
-t <- alpha_mu * (alpha_w - n - 1) / (alpha_mu + 1)
-
 g0_grid <- list(
-  list(mu0 = rep(0, n), kappa0 = n,   nu = n,   Lambda = diag(n)),
-  list(mu0 = rep(0, n), Lambda = diag(n) / t, kappa0 = alpha_mu, nu = alpha_w)
+  list(mu0 = rep(0, n), kappa0 = n,   nu = n,   Lambda = diag(n))
 )
 
 results <- data.frame()
@@ -181,10 +176,14 @@ sink("logfile.txt")
 
 for (a in seq_along(alpha_grid)) {
   for (g in seq_along(g0_grid)) {
+    for (sample in seq_along(N_samples)) {
+      
+      N = N_samples[[sample]]
       
       cat("Hyperparam setting:", counter, "\n")
       cat("alpha =", paste(alpha_grid[[a]], collapse = ","), "\n")
       cat("g0 =", g, "\n")
+      cat("N =", N, "\n")
       
       sim_results <- list()
       
@@ -208,9 +207,16 @@ for (a in seq_along(alpha_grid)) {
       sim_results_df <- bind_rows(sim_results)
       hp_summary <- summarise_hyperparam(sim_results_df)
       
+      hp_summary$N <- N
+      hp_summary$n <- n
+      
       hp_summary$alpha_a <- alpha_grid[[a]][1]
       hp_summary$alpha_b <- alpha_grid[[a]][2]
+      
       hp_summary$g0_id <- g
+      hp_summary$kappa0 <- g0_grid[[g]]$kappa0
+      hp_summary$nu <- g0_grid[[g]]$nu
+      hp_summary$lambda_scale <- g0_grid[[g]]$Lambda[1,1]
       
       results <- bind_rows(results, hp_summary)
       
@@ -219,9 +225,13 @@ for (a in seq_along(alpha_grid)) {
           alpha_a = alpha_grid[[a]][1],
           alpha_b = alpha_grid[[a]][2],
           g0_id = g,
+          N = N,
+          n = n
         )
       
       counter <- counter + 1
+      
+    }
   }
 }
 
@@ -229,10 +239,15 @@ sink()
 
 all_sim_results_df <- bind_rows(all_sim_results)
 
+# save
 saveRDS(results, "Results/hyper_param_results.rds")
 saveRDS(all_sim_results_df, "Results/hyper_param_sim_level_results.rds")
+write.xlsx(results, "Results/hyper_param_results.xlsx")
+write.xlsx(all_sim_results_df, "Results/hyper_param_sim_level_results.xlsx")
 
 ggplot(results, aes(x = interaction(alpha_a, alpha_b, g0_id),
                     y = hp_mean_ari)) +
   geom_point() +
+  geom_line(aes(group = g0_id)) +
+  facet_wrap(~ N, scales = "free_y") +
   coord_flip()
