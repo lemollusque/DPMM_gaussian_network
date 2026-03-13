@@ -79,3 +79,45 @@ ClusterComponentUpdate_conjugate <-function (dpObj)
     dpObj$numberClusters <- numLabels
     return(dpObj)
 }
+
+# getS3method("ClusterLabelPredict", "conjugate")
+ClusterLabelPredict <- function (dpobj, newData) 
+{
+    if (!is.matrix(newData)) 
+        newData <- matrix(newData, ncol = 1)
+    alpha <- dpobj$alpha
+    clusterParams <- dpobj$clusterParameters
+    numLabels <- dpobj$numberClusters
+    mdobj <- dpobj$mixingDistribution
+    pointsPerCluster <- dpobj$pointsPerCluster
+    Predictive_newData <- Predictive(mdobj, newData)
+    componentIndexes <- numeric(nrow(newData))
+    for (i in seq_len(nrow(newData))) {
+        dataVal <- newData[i, , drop = FALSE]
+        weights <- numeric(numLabels + 1)
+        weights[1:numLabels] <- pointsPerCluster * Likelihood(mdobj, 
+            dataVal, clusterParams)
+        weights[numLabels + 1] <- alpha * Predictive_newData[i]
+        ind <- numLabels + 1
+        component <- sample.int(ind, 1, prob = weights)
+        if (component <= numLabels) {
+            componentIndexes[i] <- component
+            pointsPerCluster[component] <- pointsPerCluster[component] + 
+                1
+        }
+        else {
+            componentIndexes[i] <- component
+            numLabels <- numLabels + 1
+            pointsPerCluster <- c(pointsPerCluster, 1)
+            post_draw <- PosteriorDraw(mdobj, newData[i, , drop = FALSE])
+            for (j in seq_along(clusterParams)) {
+                clusterParams[[j]] <- array(c(clusterParams[[j]], 
+                  post_draw[[j]]), dim = c(dim(post_draw[[j]])[1:2], 
+                  dim(clusterParams[[j]])[3] + 1))
+            }
+        }
+    }
+    outList <- list(componentIndexes = componentIndexes, pointsPerCluster = pointsPerCluster, 
+        clusterParams = clusterParams, numLabels = numLabels)
+    return(outList)
+}
