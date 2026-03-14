@@ -21,8 +21,8 @@ init.seed <- 100
 iter <- 100
 dual <- FALSE
 param_grid <- expand.grid(
-  N = c(100,200),
-  n = 4,
+  N = c(100, 200, 500, 1000),
+  n = 4:10,
   bge.par = 1
 )
 sim_grid <- expand.grid(
@@ -101,6 +101,7 @@ results <- with_progress({
     iter_results
   }
 })
+future::plan(sequential)
 
 colnames(results) <- c(
   "ESHD", "eTP", "eFP", "TPR", "FPR_P",
@@ -119,14 +120,19 @@ results_small <- results %>%
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
+means <- results_small %>%
+  group_by(method, N, n) %>%
+  summarise(mean_ESHD = mean(ESHD), .groups = "drop")
+
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
-  geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
-  geom_jitter(aes(group = method), width = 0.15, alpha = 0.7, size = 1.2) +
-  coord_cartesian(ylim = c(0, 12)) +
-  labs(x = NULL, y = "E=SHD") +
-  theme_bw() +
-  theme(
-    legend.position = "bottom",
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    panel.grid.major.x = element_blank()
-  )
+  geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA) +
+  geom_jitter(width = 0.12, alpha = 0.5) +
+  geom_text(
+    data = means,
+    aes(x = method, y = mean_ESHD, label = round(mean_ESHD,2)),
+    color = "black",
+    vjust = -0.7,
+    size = 3
+  ) +
+  facet_grid(n ~ N, scales = "free_y") +
+  theme_bw()
