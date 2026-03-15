@@ -10,6 +10,7 @@ library(parallelly)
 library(mclust)
 library(progressr)
 library(doRNG)
+library(mvtnorm)
 
 source("comparison_algs.R")
 source("dualPC.R")
@@ -71,12 +72,12 @@ results <- with_progress({
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- corr(g)
-    model2 <- corr(g)
+    model1 <- cov(g)
+    model2 <- cov(g)
     
     
-    X1 <- simulate(model1$B, model1$O, N / 2)
-    X2 <- simulate(model2$B, model2$O, N / 2)
+    X1 <- rmvt(N/2, sigma =  model1$S, df = 3)
+    X2 <- rmvt(N/2, sigma =  model2$S, df = 3)
     
     v <- rnorm(ncol(X2))
     v <- v / sqrt(sum(v^2))   
@@ -115,14 +116,16 @@ colnames(results) <- c(
   "time", "parameter", "method", "graph", "N", "n", "d"
 )
 
-saveRDS(results, "Results/Sims_bimodal_bge.rds")
+saveRDS(results, "Results/Sims_bimodal_bge_student.rds")
 
 
 # plots resutts
 keep_methods <- c("BGe, partition", "BGe, order")
 
 results_small <- results %>%
-  filter(graph == "pattern", method %in% keep_methods) 
+  filter(graph == "pattern", 
+         method %in% keep_methods,
+         n == 10) 
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
