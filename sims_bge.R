@@ -74,15 +74,13 @@ results <- with_progress({
     model1 <- corr(g)
     model2 <- corr(g)
     
-    df <- 3
-    t_err <- function(n, var) {
-      rt(n, df = df) * sqrt(var * (df - 2) / df)
-    }
     
-    X1 <- simulate(model1$B, model1$O, N / 2, err = t_err)
-    X2 <- simulate(model2$B, model2$O, N / 2, err = t_err)
+    X1 <- simulate(model1$B, model1$O, N / 2)
+    X2 <- simulate(model2$B, model2$O, N / 2)
     
-    shift <- d * sample(c(-1, 1), ncol(X2), replace = TRUE)
+    v <- rnorm(ncol(X2))
+    v <- v / sqrt(sum(v^2))   
+    shift <- d * v
     X2 <- sweep(X2, 2, shift, "+")
     
     data <- standardize(rbind(X1, X2))
