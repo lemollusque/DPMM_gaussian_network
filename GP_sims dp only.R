@@ -4,142 +4,162 @@ library(dirichletprocess)
 library(dplyr)
 library(ggplot2)
 library(foreach)
-library(doParallel)
+library(doFuture)
+library(future)
 library(parallelly)
 library(mclust)
+library(progressr)
+library(doRNG)
+library(mvtnorm)
 
-source("Fourier_fns.R")
 source("comparison_algs.R")
 source("dualPC.R")
 source("dao.R")
 source("fns.R")
-# load functions script
 insertSource("fns.R", package = "BiDAG")
 
 
-
 init.seed <- 100
-iter <- 50  # number of simulations
-lambdas <- c(1)  # non-linearity; zero is linear
-dual <- F    # use dualPC
-n <- 4    # number of nodes
-N <- 100     # number of samples
-results <- data.frame()
+iter <- 30
+dual <- FALSE
+param_grid <- expand.grid(
+  N = c(200),
+  n = 10,
+  d = 4,
+  bge.par = 1
+)
+sim_grid <- expand.grid(
+  j = seq_len(nrow(param_grid)),
+  i = seq_len(iter)
+)
 
-# Parameters for ROC curves
-bge.mus <- c(1)
+n_cores <- max(1, availableCores() - 1)
 
-computing_len = length(bge.mus) * iter * length(lambdas)
-computing_done = 1
+plan(multisession, workers = n_cores)
+registerDoFuture()
+registerDoRNG(init.seed)
 
-sink("logfile.txt")
-for(lambda in lambdas) {
-  print(paste("Lambda:", lambda))
+handlers(global = TRUE)
+handlers("txtprogressbar")
 
-  for(k in 1:length(bge.mus)) {
-    print(paste("Parameter:", k))
-    bge.par <- bge.mus[k]
-    alpha_w  <- n + bge.par + 1      
-    t <- bge.par * (alpha_w - n - 1) / (bge.par + 1)
+results <- with_progress({
+  p <- progressor(steps = nrow(sim_grid))
+  
+  foreach(
+    k = seq_len(nrow(sim_grid)),
+    .combine = rbind,
+    .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust")
+  ) %dorng% {
     
-    for (i in 1:iter) {
-      print(paste("Iteration:", i))
-      print(paste("computation: ", computing_done/computing_len))
-      set.seed(init.seed+i)
-      
-      # Generate DAG & data
-      g <- er_dag(n, ad =3)
-      g <- sf_out(g)
-      truegraph <- randomize_graph(g)
-      
-      
-      model1 <- corr(g)
-      model2 <- corr(g)
-      
-      df <- 3
-      t_err <- function(n, var) {
-        rt(n, df=df) * sqrt(var * (df-2)/df)
-      }
-      X1 <- simulate(model1$B, model1$O, N/2, err = t_err)
-      X2 <- simulate(model2$B, model2$O, N/2, err = t_err)
-      
-      shift <- runif(ncol(X2), -2, 2)
-      X2 <- sweep(X2, 2, shift, "+")
-      
-      data <- standardize(rbind(X1, X2))
-      
-      # Set initial search spaces
-      DP.searchspace = set.searchspace(data, 
-                                       dual, 
-                                       "DP", 
-                                       usrpar = list(pctesttype = "bge",
-                                                     am = bge.par, 
-                                                     aw = alpha_w, 
-                                                     T0scale = t,
-                                                     dp_iter = 100,
-                                                     burnin = 50,
-                                                     L = 10,
-                                                     edgepf = 1
-                                       )
+    source("comparison_algs.R")
+    source("dualPC.R")
+    source("dao.R")
+    source("fns.R")
+    insertSource("fns.R", package = "BiDAG")
+    
+    # show progress
+    p()
+    
+    # set params
+    j <- sim_grid$j[k]
+    i <- sim_grid$i[k]
+    
+    N <- param_grid$N[j]
+    n <- param_grid$n[j]
+    d <- param_grid$d[j]
+    bge.par <- param_grid$bge.par[j]
+    
+    g <- er_dag(n)
+    g <- sf_out(g)
+    truegraph <- randomize_graph(g)
+    
+    model1 <- cov(g)
+    model2 <- cov(g)
+    
+    
+    X1 <- rmvt(N/2, sigma =  model1$S, df = 3)
+    X2 <- rmvt(N/2, sigma =  model2$S, df = 3)
+    
+    v <- rnorm(ncol(X2))
+    v <- v / sqrt(sum(v^2))   
+    shift <- d * v
+    X2 <- sweep(X2, 2, shift, "+")
+    
+    data <- standardize(rbind(X1, X2))
+    
+    DP.searchspace <- set.searchspace(
+      data,
+      dual,
+      "DP",
+      usrpar = list(
+        pctesttype = "bge",
+        am = bge.par,
+        alpha_prior = c(2, 4),
+        dp_iter = 200,
+        dp_fits = 2,
+        burnin = 190,
+        L = 10,
+        edgepf = 1
       )
-      for (p in 1:length(DP.searchspace$score$dp_scoreparam_list)){
-        for ( s in 1:length(DP.searchspace$score$dp_scoreparam_list[[p]]$scores)){
-          if (DP.searchspace$score$dp_scoreparam_list[[p]]$scores[[s]]$K != 1){
-            cat(DP.searchspace$score$dp_scoreparam_list[[p]]$scores[[s]]$K)
-            
-          }
-        }
-      }
-      
-      
-      bge.searchspace = set.searchspace(data, dual, "bge", bgepar = list(am = bge.par))
-      
-      # Bge score, partition
-      bge.fit <- bge.partition.mcmc(bge.searchspace, order = F)
-      results <- compare_results(bge.fit, c(bge.par, "BGe, partition", lambda), results, truegraph)
-      
-      # Bge score, order
-      bge.fit <- bge.partition.mcmc(bge.searchspace, order = T)
-      results <- compare_results(bge.fit, c(bge.par, "BGe, order", lambda), results, truegraph)
-      
-      # DP score, partition
-      dp.fit <- DP.partition.mcmc(DP.searchspace, order = F)
-      results <- compare_results(dp.fit, c(bge.par, "DP, partition", lambda), results, truegraph)
-      
-      # DP score, order
-      dp.fit <- DP.partition.mcmc(DP.searchspace, order = T)
-      results <- compare_results(dp.fit, c(bge.par, "DP, order", lambda), results, truegraph)
-      
-      # for printing
-      computing_done = computing_done + 1
-    }
+    )
+    
+    bge.searchspace <- set.searchspace(
+      data, dual, "bge", bgepar = list(am = bge.par)
+    )
+    
+    iter_results <- data.frame()
+    
+    bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
+    iter_results <- compare_results(
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+    )
+    
+    bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
+    iter_results <- compare_results(
+      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+    )
+    
+    dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
+    iter_results <- compare_results(
+      dp.fit, c(bge.par, "DP, partition"), iter_results, truegraph
+    )
+    
+    dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
+    iter_results <- compare_results(
+      dp.fit, c(bge.par, "DP, order"), iter_results, truegraph
+    )
+    
+    iter_results$N <- N
+    iter_results$n <- n
+    iter_results$d <- d
+    
+    iter_results
   }
-}
-colnames(results) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P", 
-                       "time", "parameter", "method", "lambda", "graph")
+})
+future::plan(sequential)
+
+colnames(results) <- c(
+  "ESHD", "eTP", "eFP", "TPR", "FPR_P",
+  "time", "parameter", "method", "graph", "N", "n", "d"
+)
+
+
 saveRDS(results, "Results/Sims_Results_dp.rds")
-sink()
 
 
 # plots resutts
 keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")
 
 results_small <- results %>%
-  filter(graph == "pattern", method %in% keep_methods) %>%
-  mutate(
-    lambda = factor(as.character(round(as.numeric(lambda), 2)),
-                    levels = c("1", "0.5", "0")),
-    method = factor(method, levels = keep_methods)
-  )
+  filter(graph == "pattern", method %in% keep_methods) 
+
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
-lab_lambda <- function(x) parse(text = paste0("lambda==", x))
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
   geom_jitter(aes(group = method), width = 0.15, alpha = 0.7, size = 1.2) +
-  facet_wrap(~ lambda, nrow = 1, labeller = labeller(lambda = \(x) paste0("λ = ", x))) +
-  coord_cartesian(ylim = c(0, 12)) +
+  coord_cartesian(ylim = c(20, 40)) +
   labs(x = NULL, y = "E=SHD") +
   theme_bw() +
   theme(

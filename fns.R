@@ -153,6 +153,7 @@ usrscoreparameters <- function(initparam,
       constscorefact <- numeric(K)
       for (k in  1:K){
         weightvector = membershipp[,k]
+        cat("DP", d, "sample", l, "cluster", k, "Nk:", sum(weightvector), "\n")
         Nk[k] <- sum(weightvector)
         forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
         covmatk <- forcov$cov * Nk[k]
@@ -285,8 +286,7 @@ update_score_param_from_childparents <- function(param, child, parents) {
     if (length(idx) == 0) {
       dp_data = param$data[,c(child, parents)]
       if (length(parents) == 0){
-        dp <-  DirichletProcessGaussian(dp_data,
-                                        alphaPriors = c(1, 20))
+        dp <-  DirichletProcessGaussian(dp_data)
       }
       else{
         n_col = ncol(dp_data)
@@ -501,53 +501,23 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     colnames(data) <- sapply(c(1:ncol(data)), function(x) paste("v", x, sep = ""))
   }
   
-  cor_mat <- cor(data)
-  if(dual) {
-    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
-    colnames(startspace) <- colnames(data)
-    row.names(startspace) <- colnames(data)
-
-  }
-  else{
-    pc.skel = pcalg::pc(suffStat = list(C = cor_mat, 
-                          n = nrow(data)), indepTest = pcalg::gaussCItest, alpha = 0.05, 
-          labels = colnames(data), skel.method = "stable", 
-          verbose = FALSE)
-
-    g <- pc.skel@graph
-    startspace <- 1 * (graph2m(g))
-  }
+  
+  startspace <- matrix(1, ncol(data), ncol(data), 
+                      dimnames=list(colnames(data), colnames(data)))
+  diag(startspace) <- 0
  
   if(method == "DP") {
-    startspace <- matrix(1, ncol(data), ncol(data), 
-                        dimnames=list(colnames(data), colnames(data)))
-    diag(startspace) <- 0
     # create DPs and Gamma
     Gamma_list <- list()
-    for (child in colnames(startspace)){
-      parents <- names(which(startspace[ , child] == 1))
-      dp_data = data[,c(child, parents)]
-      if (length(parents) == 0){
-        dp <-  DirichletProcessGaussian(dp_data)
-      }
-      else{
-        n_col = ncol(dp_data)
-        g0Priors <- list(
-          mu0    = rep(0, n_col),
-          Lambda = diag(n_col) / usrpar$T0scale,   # T = (1/t) I
-          kappa0 = usrpar$am,
-          nu     = usrpar$aw
-        )
-        
-        dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
-      }
-      dp <- Fit(dp, usrpar$dp_iter)
+    for (f in seq_len(usrpar$dp_fits)){
+      dp <-  DirichletProcessMvnormal(data, alphaPriors = usrpar$alpha_prior)
+      dp <- Fit(dp, usrpar$dp_iter, progressBar = FALSE)
       
       Gamma_sample <- dp_membership_probs(dp, usrpar$burnin, usrpar$L)
       Gamma_list <- add_membershipp(Gamma_list, 
                                     Gamma_sample, 
-                                    child=child, 
-                                    parents=parents, 
+                                    child=colnames(data)[1], 
+                                    parents=colnames(data)[2:ncol(data)], 
                                     active=TRUE)
     }
     usrpar$membershipp_list = Gamma_list
@@ -558,8 +528,7 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
   
   if(method == "bge") {
     score <- scoreparameters("bge", data, bgepar = bgepar)
-    searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
-                               verbose = F, scoreout = TRUE, alphainit = 0.01)
+    searchspace = list(scoretable = NULL, DAG = NULL, maxorder = NULL, endspace = startspace)
   }
   
   time <- Sys.time() - start
