@@ -4,20 +4,20 @@ library(dirichletprocess)
 library(dplyr)
 library(ggplot2)
 library(foreach)
-library(doParallel)
+library(doFuture)
+library(future)
 library(parallelly)
 library(aricode)
 library(mclust)
 library(openxlsx)
+library(progressr)
+library(doRNG)
+library(mvtnorm)
 
 source("dao.R")
 source("fns.R")
 
-
 score_one_gamma <- function(Gamma_sample, truth) {
-  # Gamma_sample: N x K matrix
-  # truth: length N vector with values "X1"/"X2"
-  
   x1_mass <- colSums(Gamma_sample[truth == "X1", , drop = FALSE])
   x2_mass <- colSums(Gamma_sample[truth == "X2", , drop = FALSE])
   
@@ -44,6 +44,7 @@ score_one_gamma <- function(Gamma_sample, truth) {
     score = mean(same_mass) - mean(other_mass)
   )
 }
+
 summarise_scores <- function(df_scores) {
   data.frame(
     n_gamma = nrow(df_scores),
@@ -59,7 +60,6 @@ summarise_scores <- function(df_scores) {
     mean_entropy = mean(df_scores$entropy)
   )
 }
-
 
 summarise_hyperparam <- function(df_sim) {
   data.frame(
@@ -78,33 +78,31 @@ summarise_hyperparam <- function(df_sim) {
   )
 }
 
-run_one_simulation <- function(sim_id, alpha_prior, g0_prior, 
-                               init.seed, n, N, dp_fits, dp_iter, burnin, L) {
+run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
+                               init.seed, n, N, dp_fits, dp_iter,
+                               burnin, L, shift_size) {
   set.seed(init.seed + sim_id)
   
-  g <- er_dag(n, ad = 3)
+  g <- er_dag(n, d=0.2)
   g <- sf_out(g)
   truegraph <- randomize_graph(g)
   
-  model1 <- corr(g)
-  model2 <- corr(g)
+  model1 <- cov(truegraph)
+  model2 <- cov(truegraph)
   
-  df <- 3
-  t_err <- function(n, var) {
-    rt(n, df = df) * sqrt(var * (df - 2) / df)
-  }
+  X1 <- rmvt(N / 2, sigma = model1$S, df = 3)
+  X2 <- rmvt(N / 2, sigma = model2$S, df = 3)
   
-  X1 <- simulate(model1$B, model1$O, N/2, err = t_err)
-  X2 <- simulate(model2$B, model2$O, N/2, err = t_err)
-  
-  shift <- runif(ncol(X2), -2, 2)
+  v <- rnorm(ncol(X2))
+  v <- v / sqrt(sum(v^2))
+  shift <- shift_size * v
   X2 <- sweep(X2, 2, shift, "+")
   
   data <- standardize(rbind(X1, X2))
   colnames(data) <- paste0("v", seq_len(ncol(data)))
-  truth <- c(rep("X1", N/2), rep("X2", N/2))
+  truth <- c(rep("X1", N / 2), rep("X2", N / 2))
   
-  gamma_scores_all <- list()
+  gamma_scores_all <- vector("list", length = dp_fits * L)
   gamma_counter <- 1
   
   for (f in seq_len(dp_fits)) {
@@ -143,115 +141,182 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
   gamma_scores_df <- bind_rows(gamma_scores_all)
   sim_summary <- summarise_scores(gamma_scores_df)
   sim_summary$sim <- sim_id
-  sim_summary
+  
+  list(
+    sim_summary = sim_summary,
+    gamma_scores = gamma_scores_df
+  )
 }
 
-
+# ---------------------------
+# Settings
+# ---------------------------
 init.seed <- 100
-iter <- 3  # number of simulations per hyperparam
-n <- 4    # number of nodes
-N_samples <- list(50, 200)     # number of samples
+iter <- 7
+n <- 10
+shift_size <- 4   
 
-dp_fits = 2
-dp_iter_list = list(50, 100, 200, 500)   
-
+N_samples <- c(2000)
+dp_fits <- 1
+dp_iter_list <- c(100)
 
 alpha_grid <- list(
-  c(1, 1)
+  c(2, 4)
 )
 
 g0_grid <- list(
-  list(mu0 = rep(0, n), kappa0 = n,   nu = n,   Lambda = diag(n))
+  list(mu0 = rep(0, n), kappa0 = n, nu = n, Lambda = diag(n))
 )
 
-results <- data.frame()
-all_sim_results <- list()
-counter <- 1
+# Hyperparameter grid
+param_grid <- expand.grid(
+  alpha_id = seq_along(alpha_grid),
+  g0_id = seq_along(g0_grid),
+  N = N_samples,
+  dp_iter = dp_iter_list
+)
 
-sink("logfile.txt")
+# Simulation grid = hyperparameter settings x replicate
+sim_grid <- expand.grid(
+  hp_id = seq_len(nrow(param_grid)),
+  sim_id = seq_len(iter)
+)
 
-for (a in seq_along(alpha_grid)) {
-  for (g in seq_along(g0_grid)) {
-    for (sample in seq_along(N_samples)) {
-      for (d in seq_along(dp_iter_list)) {
-        
-        N = N_samples[[sample]]
-        dp_iter = dp_iter_list[[d]]
-        L = 10
-        burnin = dp_iter - L
-        
-        cat("Hyperparam setting:", counter, "\n")
-        cat("alpha =", paste(alpha_grid[[a]], collapse = ","), "\n")
-        cat("g0 =", g, "\n")
-        cat("dp_iter =", dp_iter, "\n")
-        cat("N =", N, "\n")
-        
-        sim_results <- list()
-        
-        for (i in seq_len(iter)) {
-          cat("  Simulation:", i, "\n")
-          
-          sim_results[[i]] <- run_one_simulation(
-            sim_id = i,
-            alpha_prior = alpha_grid[[a]],
-            g0_prior = g0_grid[[g]],
-            init.seed = init.seed,
-            n = n,
-            N = N,
-            dp_fits = dp_fits,
-            dp_iter = dp_iter,
-            burnin = burnin,
-            L = L
-          )
-        }
-        
-        sim_results_df <- bind_rows(sim_results)
-        hp_summary <- summarise_hyperparam(sim_results_df)
-        
-        hp_summary$N <- N
-        hp_summary$n <- n
-        
-        hp_summary$dp_iter <- dp_iter
-        
-        hp_summary$alpha_a <- alpha_grid[[a]][1]
-        hp_summary$alpha_b <- alpha_grid[[a]][2]
-        
-        hp_summary$g0_id <- g
-        hp_summary$kappa0 <- g0_grid[[g]]$kappa0
-        hp_summary$nu <- g0_grid[[g]]$nu
-        hp_summary$lambda_scale <- g0_grid[[g]]$Lambda[1,1]
-        
-        results <- bind_rows(results, hp_summary)
-        
-        all_sim_results[[counter]] <- sim_results_df %>%
-          mutate(
-            alpha_a = alpha_grid[[a]][1],
-            alpha_b = alpha_grid[[a]][2],
-            g0_id = g,
-            dp_iter = dp_iter,
-            N = N,
-            n = n
-          )
-        
-        counter <- counter + 1
-      }
-    }
+# ---------------------------
+# Parallel setup
+# ---------------------------
+n_cores <- max(1, availableCores() - 1)
+plan(multisession, workers = n_cores)
+registerDoFuture()
+registerDoRNG(init.seed)
+
+handlers(global = TRUE)
+handlers("progress")
+# ---------------------------
+# Parallel run
+# ---------------------------
+all_runs <- with_progress({
+  p <- progressor(steps = nrow(sim_grid))
+  
+  foreach(
+    k = seq_len(nrow(sim_grid)),
+    .combine = dplyr::bind_rows,
+    .packages = c(
+      "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
+      "aricode", "mclust", "mvtnorm"
+    )
+  ) %dorng% {
+    
+    source("dao.R")
+    source("fns.R")
+    insertSource("fns.R", package = "BiDAG")
+    
+    hp_id <- sim_grid$hp_id[k]
+    sim_id <- sim_grid$sim_id[k]
+    
+    alpha_id <- param_grid$alpha_id[hp_id]
+    g0_id <- param_grid$g0_id[hp_id]
+    N <- param_grid$N[hp_id]
+    dp_iter <- param_grid$dp_iter[hp_id]
+    
+    alpha_prior <- alpha_grid[[alpha_id]]
+    g0_prior <- g0_grid[[g0_id]]
+    
+    L <- 10
+    burnin <- dp_iter - L
+    
+    out <- run_one_simulation(
+      sim_id = sim_id,
+      alpha_prior = alpha_prior,
+      g0_prior = g0_prior,
+      init.seed = init.seed + 10000 * hp_id,  # helps separate settings
+      n = n,
+      N = N,
+      dp_fits = dp_fits,
+      dp_iter = dp_iter,
+      burnin = burnin,
+      L = L,
+      shift_size = shift_size
+    )
+    
+    sim_summary <- out$sim_summary %>%
+      mutate(
+        hp_id = hp_id,
+        alpha_a = alpha_prior[1],
+        alpha_b = alpha_prior[2],
+        g0_id = g0_id,
+        kappa0 = g0_prior$kappa0,
+        nu = g0_prior$nu,
+        lambda_scale = g0_prior$Lambda[1, 1],
+        N = N,
+        n = n,
+        dp_iter = dp_iter
+      )
+    
+    gamma_scores <- out$gamma_scores %>%
+      mutate(
+        hp_id = hp_id,
+        alpha_a = alpha_prior[1],
+        alpha_b = alpha_prior[2],
+        g0_id = g0_id,
+        kappa0 = g0_prior$kappa0,
+        nu = g0_prior$nu,
+        lambda_scale = g0_prior$Lambda[1, 1],
+        N = N,
+        n = n,
+        dp_iter = dp_iter
+      )
+    
+    # show progress
+    p()
+    
+    data.frame(
+      result_type = c(rep("sim_summary", nrow(sim_summary)),
+                      rep("gamma_scores", nrow(gamma_scores))),
+      bind_rows(sim_summary, gamma_scores)
+    )
   }
-}
+})
 
-sink()
 
-all_sim_results_df <- bind_rows(all_sim_results)
+plan(sequential)
 
-# save
+# ---------------------------
+# Split outputs back apart
+# ---------------------------
+all_sim_results_df <- all_runs %>%
+  filter(result_type == "gamma_scores") %>%
+  select(-result_type)
+
+sim_level_summary_df <- all_runs %>%
+  filter(result_type == "sim_summary") %>%
+  select(-result_type)
+
+# Hyperparameter-level summary
+results <- sim_level_summary_df %>%
+  group_by(
+    hp_id, N, n, dp_iter, alpha_a, alpha_b,
+    g0_id, kappa0, nu, lambda_scale
+  ) %>%
+  group_modify(~ summarise_hyperparam(.x)) %>%
+  ungroup()
+
+# ---------------------------
+# Save
+# ---------------------------
 saveRDS(results, "Results/hyper_param_results.rds")
+saveRDS(sim_level_summary_df, "Results/hyper_param_sim_level_summaries.rds")
 saveRDS(all_sim_results_df, "Results/hyper_param_sim_level_results.rds")
+
 write.xlsx(results, "Results/hyper_param_results.xlsx")
+write.xlsx(sim_level_summary_df, "Results/hyper_param_sim_level_summaries.xlsx")
 write.xlsx(all_sim_results_df, "Results/hyper_param_sim_level_results.xlsx")
 
-ggplot(results, aes(x = dp_iter,
-                    y = hp_mean_ari)) +
+# ---------------------------
+# Plot
+# ---------------------------
+ggplot(results, aes(x = N, y = hp_mean_ari)) +
   geom_point() +
   geom_line(aes(group = g0_id)) +
-  facet_wrap(~ N, scales = "free_y") +
+  facet_wrap(~ alpha_a, scales = "free_y") +
   coord_flip()
