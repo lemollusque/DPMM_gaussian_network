@@ -26,14 +26,14 @@ dual <- FALSE
 # dirichlet params
 alpha_prior = c(2, 4)
 dp_iter = 100
-dp_fits = 2
+dp_fits = 1
 burnin = 90
 L = 10
 
 param_grid <- expand.grid(
   N = c(200),
   n = 4,
-  d = 10,
+  d = c(1,2,5,10),
   bge.par = 1
 )
 sim_grid <- expand.grid(
@@ -188,7 +188,7 @@ benchmark_medians <- data_benchmark %>%
 
 # add text medians
 medians <- results_small %>%
-  group_by(method, N, n) %>%
+  group_by(method, N, n, d) %>%
   summarise(median_ESHD = median(ESHD), .groups = "drop")
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
@@ -211,6 +211,7 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   
   coord_cartesian(ylim = c(0, 6)) +
   labs(x = NULL, y = "E=SHD") +
+  facet_grid( ~ d, scales = "free_y") +
   theme_bw() +
   theme(
     legend.position = "bottom",
