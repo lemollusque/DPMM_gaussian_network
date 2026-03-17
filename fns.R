@@ -493,44 +493,24 @@ sampleDAGs <- function(inData, nDigraphs = 50, seed=101, dname="", ...){
          file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
   }
 }  
-set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(), bgepar = list()){
+set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
   startspace <- NULL
   
-  if(is.null(colnames(data))) {
-    colnames(data) <- sapply(c(1:ncol(data)), function(x) paste("v", x, sep = ""))
+  if(dual) {
+    cor_mat <- cor(data)
+    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
   }
   
-  
-  startspace <- matrix(1, ncol(data), ncol(data), 
-                      dimnames=list(colnames(data), colnames(data)))
-  diag(startspace) <- 0
- 
   if(method == "DP") {
-    # create DPs and Gamma
-    Gamma_list <- list()
-    for (f in seq_len(usrpar$dp_fits)){
-      dp <-  DirichletProcessMvnormal(data, alphaPriors = usrpar$alpha_prior)
-      dp <- Fit(dp, usrpar$dp_iter, progressBar = FALSE)
-      
-      Gamma_sample <- dp_membership_probs(dp, usrpar$burnin, usrpar$L)
-      Gamma_list <- add_membershipp(Gamma_list, 
-                                    Gamma_sample, 
-                                    child=colnames(data)[1], 
-                                    parents=colnames(data)[2:ncol(data)], 
-                                    active=TRUE)
-    }
-    usrpar$membershipp_list = Gamma_list
-    score <- scoreparameters("usr", data, 
-                             usrpar = usrpar)
-    searchspace = list(scoretable = NULL, DAG = NULL, maxorder = NULL, endspace = startspace)
+    score <- scoreparameters("usr", data, usrpar = usrpar)
   }
   
   if(method == "bge") {
-    score <- scoreparameters("bge", data, bgepar = bgepar)
-    searchspace = list(scoretable = NULL, DAG = NULL, maxorder = NULL, endspace = startspace)
+    score <- scoreparameters("bge", data, bgepar = list(am = par))
   }
-  
+  searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
+                               verbose = F, scoreout = TRUE, alphainit = 0.01)
   time <- Sys.time() - start
   
   list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 

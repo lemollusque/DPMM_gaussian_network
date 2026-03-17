@@ -19,11 +19,11 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 50
+iter <- 30
 dual <- FALSE
 param_grid <- expand.grid(
   N = c(100, 200, 500, 1000),
-  n = 4:10,
+  n = c(4,10),
   d = 0:10,
   bge.par = 1
 )
@@ -86,9 +86,8 @@ results <- with_progress({
     
     data <- standardize(rbind(X1, X2))
     
-    bge.searchspace <- set.searchspace(
-      data, dual, "bge", bgepar = list(am = bge.par)
-    )
+    bge.searchspace = set.searchspace(data, dual, "bge", bge.par)
+    
     
     iter_results <- data.frame()
     
@@ -125,21 +124,21 @@ keep_methods <- c("BGe, partition", "BGe, order")
 results_small <- results %>%
   filter(graph == "pattern", 
          method %in% keep_methods,
-         n == 10) 
+         n == 4) 
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
-means <- results_small %>%
+medians <- results_small %>%
   group_by(method, N, d) %>%
-  summarise(mean_ESHD = mean(ESHD), .groups = "drop")
+  summarise(medians_ESHD = median(ESHD), .groups = "drop")
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.12, alpha = 0.5) +
   geom_text(
-    data = means,
-    aes(x = method, y = mean_ESHD, label = round(mean_ESHD,2)),
+    data = medians,
+    aes(x = method, y = medians_ESHD, label = round(medians_ESHD,2)),
     color = "black",
     vjust = -0.7,
     size = 3

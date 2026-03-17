@@ -19,7 +19,7 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 30
+iter <- 100
 dual <- FALSE
 param_grid <- expand.grid(
   N = c(100, 200, 500, 1000),
@@ -30,7 +30,7 @@ sim_grid <- expand.grid(
   j = seq_len(nrow(param_grid)),
   i = seq_len(iter)
 )
-bge.mus <- c(0.01, 0.1, 0.5, 2, 5)
+bge.mus <- c(1)
 
 n_cores <- max(1, availableCores() - 1)
 
@@ -77,9 +77,7 @@ results <- with_progress({
     
     for(k in 1:length(bge.mus)) {
       bge.par <- bge.mus[k]
-      bge.searchspace <- set.searchspace(
-        data, dual, "bge", bgepar = list(am = bge.par)
-      )
+      bge.searchspace = set.searchspace(data, dual, "bge", bge.par)
       
       bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
       iter_results <- compare_results(
