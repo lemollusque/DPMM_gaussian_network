@@ -10,6 +10,7 @@ library(parallelly)
 library(mclust)
 library(progressr)
 library(doRNG)
+library(mvtnorm)
 
 source("comparison_algs.R")
 source("dualPC.R")
@@ -18,7 +19,7 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 100
+iter <- 30
 dual <- FALSE
 param_grid <- expand.grid(
   N = c(100, 200, 500, 1000),
@@ -29,6 +30,7 @@ sim_grid <- expand.grid(
   j = seq_len(nrow(param_grid)),
   i = seq_len(iter)
 )
+bge.mus <- c(0.01, 0.1, 0.5, 2, 5)
 
 n_cores <- max(1, availableCores() - 1)
 
@@ -63,37 +65,32 @@ results <- with_progress({
   
     N <- param_grid$N[j]
     n <- param_grid$n[j]
-    bge.par <- param_grid$bge.par[j]
     
-    g <- er_dag(n, ad = 3)
+    g <- er_dag(n, d=0.2)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
-    
-    model <- corr(g)
-    
-    df <- 3
-    t_err <- function(n, var) {
-      rt(n, df = df) * sqrt(var * (df - 2) / df)
-    }
-    
-    X <- simulate(model$B, model$O, N)
+    model <- cov(truegraph)
+    X <- rmvnorm(N, sigma =  model$S)
     data <- standardize(X)
-    
-    bge.searchspace <- set.searchspace(
-      data, dual, "bge", bgepar = list(am = bge.par)
-    )
     
     iter_results <- data.frame()
     
-    bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
-    iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
-    )
-    
-    bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
-    iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
-    )
+    for(k in 1:length(bge.mus)) {
+      bge.par <- bge.mus[k]
+      bge.searchspace <- set.searchspace(
+        data, dual, "bge", bgepar = list(am = bge.par)
+      )
+      
+      bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
+      iter_results <- compare_results(
+        bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+      )
+      
+      bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
+      iter_results <- compare_results(
+        bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+      )
+    }
     
     iter_results$N <- N
     iter_results$n <- n
@@ -109,6 +106,7 @@ colnames(results) <- c(
 )
 
 saveRDS(results, "Results/Sims_benchmark.rds")
+#results <- as.data.frame(readRDS("Results/Sims_benchmark.rds"))
 
 
 # plots resutts
@@ -120,16 +118,28 @@ results_small <- results %>%
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
-means <- results_small %>%
+
+best_params <- results_small %>%
+  group_by(N, n, method, parameter) %>%
+  summarise(mean_ESHD = mean(ESHD, na.rm = TRUE), .groups = "drop") %>%
+  group_by(N, n, method) %>%
+  slice_min(mean_ESHD, n = 1, with_ties = FALSE)
+
+
+results_small <- results_small %>%
+  inner_join(best_params, by = c("N", "n", "method", "parameter"))
+
+
+medians <- results_small %>%
   group_by(method, N, n) %>%
-  summarise(mean_ESHD = mean(ESHD), .groups = "drop")
+  summarise(median_ESHD = median(ESHD), .groups = "drop")
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.12, alpha = 0.5) +
   geom_text(
-    data = means,
-    aes(x = method, y = mean_ESHD, label = round(mean_ESHD,2)),
+    data = medians,
+    aes(x = method, y = median_ESHD, label = round(median_ESHD,2)),
     color = "black",
     vjust = -0.7,
     size = 3

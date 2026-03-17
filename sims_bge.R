@@ -19,7 +19,7 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 100
+iter <- 50
 dual <- FALSE
 param_grid <- expand.grid(
   N = c(100, 200, 500, 1000),
@@ -68,12 +68,12 @@ results <- with_progress({
     d <- param_grid$d[j]
     bge.par <- param_grid$bge.par[j]
     
-    g <- er_dag(n)
+    g <- er_dag(n, d=0.2)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- cov(g)
-    model2 <- cov(g)
+    model1 <- cov(truegraph)
+    model2 <- cov(truegraph)
     
     
     X1 <- rmvt(N/2, sigma =  model1$S, df = 3)
@@ -117,7 +117,7 @@ colnames(results) <- c(
 )
 
 saveRDS(results, "Results/Sims_bimodal_bge_student.rds")
-
+#results <- as.data.frame(readRDS("Results/Sims_bimodal_bge_student.rds"))
 
 # plots resutts
 keep_methods <- c("BGe, partition", "BGe, order")

@@ -20,10 +20,10 @@ insertSource("fns.R", package = "BiDAG")
 
 
 init.seed <- 100
-iter <- 30
+iter <- 7
 dual <- FALSE
 param_grid <- expand.grid(
-  N = c(200),
+  N = c(1000),
   n = 10,
   d = 4,
   bge.par = 1
@@ -56,10 +56,7 @@ results <- with_progress({
     source("dao.R")
     source("fns.R")
     insertSource("fns.R", package = "BiDAG")
-    
-    # show progress
-    p()
-    
+
     # set params
     j <- sim_grid$j[k]
     i <- sim_grid$i[k]
@@ -69,12 +66,12 @@ results <- with_progress({
     d <- param_grid$d[j]
     bge.par <- param_grid$bge.par[j]
     
-    g <- er_dag(n)
+    g <- er_dag(n, d=0.2)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- cov(g)
-    model2 <- cov(g)
+    model1 <- cov(truegraph)
+    model2 <- cov(truegraph)
     
     
     X1 <- rmvt(N/2, sigma =  model1$S, df = 3)
@@ -95,9 +92,9 @@ results <- with_progress({
         pctesttype = "bge",
         am = bge.par,
         alpha_prior = c(2, 4),
-        dp_iter = 200,
-        dp_fits = 2,
-        burnin = 190,
+        dp_iter = 100,
+        dp_fits = 1,
+        burnin = 90,
         L = 10,
         edgepf = 1
       )
@@ -133,6 +130,9 @@ results <- with_progress({
     iter_results$n <- n
     iter_results$d <- d
     
+    # show progress
+    p()
+    
     iter_results
   }
 })
@@ -156,9 +156,33 @@ results_small <- results %>%
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
+# extract benchmark
+data_benchmark <- as.data.frame(readRDS("Results/Sims_benchmark.rds"))
+data_benchmark <- data_benchmark %>%
+  filter(graph == "pattern", 
+         method %in% keep_methods,
+         n==param_grid$n[1],
+         N==param_grid$N[1]) 
+data_benchmark <- data_benchmark %>%
+  mutate(ESHD = as.numeric(ESHD))
+
+benchmark_means <- data_benchmark %>%
+  group_by(method) %>%
+  summarise(mean_ESHD = mean(ESHD, na.rm = TRUE), .groups = "drop")
+
+
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
-  geom_jitter(aes(group = method), width = 0.15, alpha = 0.7, size = 1.2) +
+  geom_jitter(width = 0.15, alpha = 0.7, size = 1.2) +
+  
+  geom_hline(
+    data = benchmark_means,
+    aes(yintercept = mean_ESHD, color = method),
+    linetype = "dashed",
+    linewidth = 1,
+    show.legend = FALSE
+  ) +
+  
   coord_cartesian(ylim = c(20, 40)) +
   labs(x = NULL, y = "E=SHD") +
   theme_bw() +
@@ -167,3 +191,6 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid.major.x = element_blank()
   )
+
+
+
