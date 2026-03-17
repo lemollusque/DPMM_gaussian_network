@@ -10,16 +10,18 @@ library(openxlsx)
 library(progressr)
 library(doRNG)
 library(tidyverse)
+library(mvtnorm)
 
 source("Fourier_fns.R")
 source("BayesStanFns.R")
 source("sampling_fns.R")
 source("comparison_algs.R")
 source("dualPC.R")
+source("dao.R")
 insertSource("GPscore.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 100  # number of simulations
+iter <- 30  # number of simulations
 lambdas <- c(0)  # non-linearity; zero is linear
 dual <- T    # use dualPC
 n <- 10      # number of nodes
@@ -61,6 +63,7 @@ results <- with_progress({
     source("sampling_fns.R")
     source("comparison_algs.R")
     source("dualPC.R")
+    source("dao.R")
     insertSource("GPscore.R", package = "BiDAG")
     
     p()
@@ -73,7 +76,12 @@ results <- with_progress({
     myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1*(trueDAG != 0)
-    data <- Fou_nldata(truegraph, N, lambda = lambda, noise.sd = 1, standardize = T) 
+    
+    model <- corr(truegraph)
+    
+    X <- simulate(model$B, model$O, N)
+    data <- standardize(X)
+    
     
     iter_results <- data.frame()
     
@@ -100,7 +108,7 @@ colnames(results) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P",
                        "time", "parameter", "method", "lambda", "graph",
                        "N", "n", "iter"
 )
-saveRDS(results, "Sims_Results_bge.rds")
+saveRDS(results, "Results/Sims_Results_bge.rds")
 
 # plots resutts
 keep_methods <- c("BGe, partition", "BGe, order")
@@ -124,14 +132,14 @@ results_small <- results_small %>%
 
 medians <- results_small %>%
   group_by(method, N, n) %>%
-  summarise(mean_ESHD = median(ESHD), .groups = "drop")
+  summarise(median_ESHD = median(ESHD), .groups = "drop")
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA) +
   geom_jitter(width = 0.12, alpha = 0.5) +
   geom_text(
     data = medians,
-    aes(x = method, y = mean_ESHD, label = round(mean_ESHD,2)),
+    aes(x = method, y = median_ESHD, label = round(median_ESHD,2)),
     color = "black",
     vjust = -0.7,
     size = 3
