@@ -24,7 +24,7 @@ iter <- 3
 n <- 4
 shift_sizes <- c(1, 3, 5)
 
-N_samples <- c(500, 750)
+N_samples <- c(1000)
 dp_fits <- 2
 dp_iter <- 500
 
@@ -159,7 +159,6 @@ summarise_hyperparam <- function(df_sim) {
 # --------------------------------------------------
 # One simulation
 # --------------------------------------------------
-
 run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
                                n, N, dp_fits, dp_iter,
                                sample_windows, shift_size,
@@ -420,5 +419,6 @@ ggplot(results, aes(x = to, y = hp_mean_ari)) +
         ymax = hp_mean_ari + hp_sd_ari),
     width = 5
   ) +
+  coord_cartesian(ylim = c(0, 1)) +
   facet_grid(shift_size ~ N, scales = "free_y") +
   theme_bw()
