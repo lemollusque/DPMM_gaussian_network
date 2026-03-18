@@ -11,11 +11,105 @@ library(aricode)
 library(mclust)
 library(openxlsx)
 library(progressr)
-library(doRNG)
 library(mvtnorm)
 
 source("dao.R")
 source("fns.R")
+
+# --------------------------------------------------
+# Settings
+# --------------------------------------------------
+
+iter <- 3
+n <- 4
+shift_sizes <- c(1, 3, 5)
+
+N_samples <- c(500, 750)
+dp_fits <- 2
+dp_iter <- 500
+
+sample_windows <- list(
+  w40_50   = 40:50,
+  w90_100  = 90:100,
+  w190_200 = 190:200,
+  w290_300 = 290:300,
+  w390_400 = 390:400,
+  w490_500 = 490:500
+)
+
+alpha_grid <- list(
+  c(2, 4)
+)
+
+g0_grid <- list(
+  list(mu0 = rep(0, n), kappa0 = n, nu = n, Lambda = diag(n))
+)
+
+# Hyperparameter grid
+param_grid <- expand.grid(
+  alpha_id = seq_along(alpha_grid),
+  g0_id = seq_along(g0_grid),
+  N = N_samples,
+  shift_size = shift_sizes
+)
+
+# Simulation grid = hyperparameter settings x replicate
+sim_grid <- expand.grid(
+  hp_id = seq_len(nrow(param_grid)),
+  sim_id = seq_len(iter)
+)
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+
+dp_membership_probs_iters <- function(dp, sample_iters) {
+  y <- dp$data
+  N <- dp$n
+  mdObj <- dp$mixingDistribution
+  
+  clusterParams_sample <- dp$clusterParametersChain[sample_iters]
+  weightsChain_sample <- dp$weightsChain[sample_iters]
+  pointsPerCluster_sample <- lapply(weightsChain_sample, function(w) w * N)
+  
+  probs_list <- vector("list", length(sample_iters))
+  
+  for (l in seq_along(sample_iters)) {
+    clusterParams <- clusterParams_sample[[l]]
+    pointsPerCluster <- pointsPerCluster_sample[[l]]
+    numLabels <- length(pointsPerCluster)
+    
+    probs <- matrix(0, nrow = N, ncol = numLabels)
+    
+    for (i in seq_len(N)) {
+      rowp <- pointsPerCluster *
+        Likelihood(mdObj, y[i, , drop = FALSE], clusterParams)
+      
+      rowp[is.na(rowp)] <- 0
+      if (all(rowp == 0)) {
+        rowp <- rep_len(1, length(rowp))
+      }
+      
+      probs[i, ] <- rowp
+    }
+    
+    col_sums <- colSums(probs)
+    probs <- probs[, col_sums > 0, drop = FALSE]
+    probs_list[[l]] <- probs / rowSums(probs)
+  }
+  
+  names(probs_list) <- as.character(sample_iters)
+  probs_list
+}
+
+make_iter_window_map <- function(sample_windows) {
+  bind_rows(lapply(names(sample_windows), function(w) {
+    data.frame(
+      window = w,
+      sampled_iter = sample_windows[[w]]
+    )
+  }))
+}
 
 score_one_gamma <- function(Gamma_sample, truth) {
   x1_mass <- colSums(Gamma_sample[truth == "X1", , drop = FALSE])
@@ -45,22 +139,6 @@ score_one_gamma <- function(Gamma_sample, truth) {
   )
 }
 
-summarise_scores <- function(df_scores) {
-  data.frame(
-    n_gamma = nrow(df_scores),
-    mean_score = mean(df_scores$score),
-    sd_score = sd(df_scores$score),
-    min_score = min(df_scores$score),
-    median_score = median(df_scores$score),
-    max_score = max(df_scores$score),
-    mean_ari = mean(df_scores$ari),
-    mean_nmi = mean(df_scores$nmi),
-    mean_same_mass = mean(df_scores$same_mass),
-    mean_other_mass = mean(df_scores$other_mass),
-    mean_entropy = mean(df_scores$entropy)
-  )
-}
-
 summarise_hyperparam <- function(df_sim) {
   data.frame(
     n_sim = nrow(df_sim),
@@ -78,20 +156,28 @@ summarise_hyperparam <- function(df_sim) {
   )
 }
 
+# --------------------------------------------------
+# One simulation
+# --------------------------------------------------
+
 run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
-                               init.seed, n, N, dp_fits, dp_iter,
-                               burnin, L, shift_size) {
-  set.seed(init.seed + sim_id)
+                               n, N, dp_fits, dp_iter,
+                               sample_windows, shift_size,
+                               job_seed) {
+  set.seed(job_seed)
   
-  g <- er_dag(n, d=0.2)
+  sample_iters <- sort(unique(unlist(sample_windows)))
+  iter_window_map <- make_iter_window_map(sample_windows)
+  
+  g <- er_dag(n, d = 0.2)
   g <- sf_out(g)
   truegraph <- randomize_graph(g)
   
-  model1 <- cov(truegraph)
-  model2 <- cov(truegraph)
+  model1 <- cov(truegraph,lb_b = 1, ub_b = 2)
+  model2 <- cov(truegraph,lb_b = 1, ub_b = 2)
   
-  X1 <- rmvt(N / 2, sigma = model1$S, df = 3)
-  X2 <- rmvt(N / 2, sigma = model2$S, df = 3)
+  X1 <- rmvnorm(N / 2, sigma = model1$S)
+  X2 <- rmvnorm(N / 2, sigma = model2$S)
   
   v <- rnorm(ncol(X2))
   v <- v / sqrt(sum(v^2))
@@ -102,7 +188,7 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
   colnames(data) <- paste0("v", seq_len(ncol(data)))
   truth <- c(rep("X1", N / 2), rep("X2", N / 2))
   
-  gamma_scores_all <- vector("list", length = dp_fits * L)
+  gamma_scores_all <- vector("list", dp_fits * length(sample_iters))
   gamma_counter <- 1
   
   for (f in seq_len(dp_fits)) {
@@ -113,7 +199,7 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
     )
     
     dp <- Fit(dp, dp_iter)
-    gamma_list <- dp_membership_probs(dp, burnin, L)
+    gamma_list <- dp_membership_probs_iters(dp, sample_iters)
     
     if (is.matrix(gamma_list)) {
       gamma_list <- list(gamma_list)
@@ -127,85 +213,71 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
         sim = sim_id,
         dp_fit = f,
         gamma_id = l,
+        sampled_iter = sample_iters[l],
         ari = sc$ari,
         nmi = sc$nmi,
         same_mass = sc$same_mass,
         other_mass = sc$other_mass,
         entropy = sc$entropy,
-        score = sc$score
+        score = sc$score,
+        job_seed = job_seed
       )
       gamma_counter <- gamma_counter + 1
     }
   }
   
-  gamma_scores_df <- bind_rows(gamma_scores_all)
-  sim_summary <- summarise_scores(gamma_scores_df)
-  sim_summary$sim <- sim_id
+  gamma_scores_df <- bind_rows(gamma_scores_all) %>%
+    left_join(iter_window_map, by = "sampled_iter")
+  
+  sim_summary_by_window <- gamma_scores_df %>%
+    group_by(sim, window, job_seed) %>%
+    summarise(
+      n_gamma = n(),
+      mean_score = mean(score),
+      sd_score = sd(score),
+      min_score = min(score),
+      median_score = median(score),
+      max_score = max(score),
+      mean_ari = mean(ari),
+      mean_nmi = mean(nmi),
+      mean_same_mass = mean(same_mass),
+      mean_other_mass = mean(other_mass),
+      mean_entropy = mean(entropy),
+      .groups = "drop"
+    )
   
   list(
-    sim_summary = sim_summary,
+    sim_summary_by_window = sim_summary_by_window,
     gamma_scores = gamma_scores_df
   )
 }
 
-# ---------------------------
-# Settings
-# ---------------------------
-init.seed <- 100
-iter <- 7
-n <- 10
-shift_size <- 4   
 
-N_samples <- c(2000)
-dp_fits <- 1
-dp_iter_list <- c(100)
-
-alpha_grid <- list(
-  c(2, 4)
-)
-
-g0_grid <- list(
-  list(mu0 = rep(0, n), kappa0 = n, nu = n, Lambda = diag(n))
-)
-
-# Hyperparameter grid
-param_grid <- expand.grid(
-  alpha_id = seq_along(alpha_grid),
-  g0_id = seq_along(g0_grid),
-  N = N_samples,
-  dp_iter = dp_iter_list
-)
-
-# Simulation grid = hyperparameter settings x replicate
-sim_grid <- expand.grid(
-  hp_id = seq_len(nrow(param_grid)),
-  sim_id = seq_len(iter)
-)
-
-# ---------------------------
+# --------------------------------------------------
 # Parallel setup
-# ---------------------------
+# --------------------------------------------------
+
 n_cores <- max(1, availableCores() - 1)
 plan(multisession, workers = n_cores)
 registerDoFuture()
-registerDoRNG(init.seed)
 
 handlers(global = TRUE)
 handlers("progress")
-# ---------------------------
+
+# --------------------------------------------------
 # Parallel run
-# ---------------------------
+# --------------------------------------------------
+
 all_runs <- with_progress({
   p <- progressor(steps = nrow(sim_grid))
   
   foreach(
     k = seq_len(nrow(sim_grid)),
-    .combine = dplyr::bind_rows,
     .packages = c(
       "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
       "aricode", "mclust", "mvtnorm"
     )
-  ) %dorng% {
+  ) %dopar% {
     
     source("dao.R")
     source("fns.R")
@@ -217,29 +289,35 @@ all_runs <- with_progress({
     alpha_id <- param_grid$alpha_id[hp_id]
     g0_id <- param_grid$g0_id[hp_id]
     N <- param_grid$N[hp_id]
-    dp_iter <- param_grid$dp_iter[hp_id]
+    shift_size <- param_grid$shift_size[hp_id]
     
     alpha_prior <- alpha_grid[[alpha_id]]
     g0_prior <- g0_grid[[g0_id]]
     
-    L <- 10
-    burnin <- dp_iter - L
+    # ------------------------------------
+    # unique job seed
+    # ------------------------------------
+    
+    job_seed <- as.integer(
+      (as.numeric(Sys.time()) * 1000 + Sys.getpid() + k) %% .Machine$integer.max
+    )
+    
+    if (job_seed <= 0) job_seed <- k
     
     out <- run_one_simulation(
       sim_id = sim_id,
       alpha_prior = alpha_prior,
       g0_prior = g0_prior,
-      init.seed = init.seed + 10000 * hp_id,  # helps separate settings
       n = n,
       N = N,
       dp_fits = dp_fits,
       dp_iter = dp_iter,
-      burnin = burnin,
-      L = L,
-      shift_size = shift_size
+      sample_windows = sample_windows,
+      shift_size = shift_size,
+      job_seed = job_seed
     )
     
-    sim_summary <- out$sim_summary %>%
+    sim_summary <- out$sim_summary_by_window %>%
       mutate(
         hp_id = hp_id,
         alpha_a = alpha_prior[1],
@@ -250,7 +328,9 @@ all_runs <- with_progress({
         lambda_scale = g0_prior$Lambda[1, 1],
         N = N,
         n = n,
-        dp_iter = dp_iter
+        dp_iter = dp_iter,
+        shift_size = shift_size,
+        job_seed = job_seed
       )
     
     gamma_scores <- out$gamma_scores %>%
@@ -264,26 +344,48 @@ all_runs <- with_progress({
         lambda_scale = g0_prior$Lambda[1, 1],
         N = N,
         n = n,
-        dp_iter = dp_iter
+        dp_iter = dp_iter,
+        shift_size = shift_size,
+        job_seed = job_seed
       )
     
-    # show progress
+    result <- bind_rows(
+      sim_summary %>% mutate(result_type = "sim_summary"),
+      gamma_scores %>% mutate(result_type = "gamma_scores")
+    )
+    
+    # ------------------------------------
+    # unique filename
+    # ------------------------------------
+    
+    uid <- paste0(
+      format(Sys.time(), "%Y%m%d_%H%M%S"),
+      "_pid", Sys.getpid(),
+      "_k", k,
+      "_seed", job_seed
+    )
+    
+    file_name <- paste0("Tuning/run_", uid, ".rds")
+    
+    saveRDS(result, file_name)
+    
     p()
     
-    data.frame(
-      result_type = c(rep("sim_summary", nrow(sim_summary)),
-                      rep("gamma_scores", nrow(gamma_scores))),
-      bind_rows(sim_summary, gamma_scores)
-    )
+    NULL
   }
 })
-
-
 plan(sequential)
 
-# ---------------------------
+# --------------------------------------------------
+# load combined runs
+# --------------------------------------------------
+files <- list.files("Tuning", pattern = ".*\\.rds", full.names = TRUE)
+all_runs <- bind_rows(lapply(files, readRDS))
+
+# --------------------------------------------------
 # Split outputs back apart
-# ---------------------------
+# --------------------------------------------------
+
 all_sim_results_df <- all_runs %>%
   filter(result_type == "gamma_scores") %>%
   select(-result_type)
@@ -292,31 +394,31 @@ sim_level_summary_df <- all_runs %>%
   filter(result_type == "sim_summary") %>%
   select(-result_type)
 
-# Hyperparameter-level summary
+# Hyperparameter-level summary by window
 results <- sim_level_summary_df %>%
   group_by(
-    hp_id, N, n, dp_iter, alpha_a, alpha_b,
+    window, N, shift_size, n, alpha_a, alpha_b,
     g0_id, kappa0, nu, lambda_scale
   ) %>%
   group_modify(~ summarise_hyperparam(.x)) %>%
-  ungroup()
+  ungroup() %>%
+  mutate(
+    from = as.numeric(sub("w(\\d+)_.*", "\\1", window)),
+    to   = as.numeric(sub(".*_(\\d+)", "\\1", window))
+  )
 
-# ---------------------------
-# Save
-# ---------------------------
-saveRDS(results, "Results/hyper_param_results.rds")
-saveRDS(sim_level_summary_df, "Results/hyper_param_sim_level_summaries.rds")
-saveRDS(all_sim_results_df, "Results/hyper_param_sim_level_results.rds")
 
-write.xlsx(results, "Results/hyper_param_results.xlsx")
-write.xlsx(sim_level_summary_df, "Results/hyper_param_sim_level_summaries.xlsx")
-write.xlsx(all_sim_results_df, "Results/hyper_param_sim_level_results.xlsx")
-
-# ---------------------------
+# --------------------------------------------------
 # Plot
-# ---------------------------
-ggplot(results, aes(x = N, y = hp_mean_ari)) +
+# --------------------------------------------------
+
+ggplot(results, aes(x = to, y = hp_mean_ari)) +
   geom_point() +
-  geom_line(aes(group = g0_id)) +
-  facet_wrap(~ alpha_a, scales = "free_y") +
-  coord_flip()
+  geom_line() +
+  geom_errorbar(
+    aes(ymin = hp_mean_ari - hp_sd_ari,
+        ymax = hp_mean_ari + hp_sd_ari),
+    width = 5
+  ) +
+  facet_grid(shift_size ~ N, scales = "free_y") +
+  theme_bw()
