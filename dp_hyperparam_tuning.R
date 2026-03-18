@@ -22,9 +22,9 @@ source("fns.R")
 
 iter <- 3
 n <- 4
-shift_sizes <- c(1, 3, 5)
+shift_sizes <- c(1, 3)
 
-N_samples <- c(1000)
+N_samples <- c(1100)
 dp_fits <- 2
 dp_iter <- 500
 
@@ -267,7 +267,7 @@ handlers("progress")
 # Parallel run
 # --------------------------------------------------
 
-all_runs <- with_progress({
+with_progress({
   p <- progressor(steps = nrow(sim_grid))
   
   foreach(
@@ -369,8 +369,6 @@ all_runs <- with_progress({
     saveRDS(result, file_name)
     
     p()
-    
-    NULL
   }
 })
 plan(sequential)
