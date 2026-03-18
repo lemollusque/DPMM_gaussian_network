@@ -8,5 +8,6 @@ toyDAGfunctions.R
 saveout/
 plots/
 Results/
+Sims/
 Tuning/
 logfile.txt
