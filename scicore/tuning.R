@@ -175,7 +175,7 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
   sample_iters <- sort(unique(unlist(sample_windows)))
   iter_window_map <- make_iter_window_map(sample_windows)
   
-  g <- er_dag(n, d = 0.6)
+  g <- er_dag(n)
   g <- sf_out(g)
   truegraph <- randomize_graph(g)
   

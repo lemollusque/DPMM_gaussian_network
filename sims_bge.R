@@ -68,23 +68,25 @@ results <- with_progress({
     d <- param_grid$d[j]
     bge.par <- param_grid$bge.par[j]
     
-    g <- er_dag(n, d=0.2)
+    g <- er_dag(n)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- cov(truegraph)
-    model2 <- cov(truegraph)
+    model1 <- corr(truegraph)
+    model2 <- corr(truegraph)
     
-    
-    X1 <- rmvt(N/2, sigma =  model1$S, df = 3)
-    X2 <- rmvt(N/2, sigma =  model2$S, df = 3)
+    X1 <- simulate(model1$B, model1$O, N / 2)
+    X2 <- simulate(model2$B, model2$O, N / 2)
     
     v <- rnorm(ncol(X2))
-    v <- v / sqrt(sum(v^2))   
+    v <- v / sqrt(sum(v^2))
     shift <- d * v
     X2 <- sweep(X2, 2, shift, "+")
     
     data <- standardize(rbind(X1, X2))
+    if (is.null(colnames(data))) {
+      colnames(data) <- paste0("v", seq_len(ncol(data)))
+    }
     
     bge.searchspace = set.searchspace(data, dual, "bge", bge.par)
     

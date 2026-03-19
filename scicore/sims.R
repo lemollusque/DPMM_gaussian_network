@@ -109,21 +109,19 @@ with_progress({
       return(NULL)
     }
     
-    timing <- proc.time()
-
     # deterministic per-job seed
     job_seed <- make_job_seed(init.seed, k)
     set.seed(job_seed)
     
-    g <- er_dag(n, d = 0.2)
+    g <- er_dag(n)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- cov(truegraph, lb_b = 1, ub_b = 2)
-    model2 <- cov(truegraph, lb_b = 1, ub_b = 2)
+    model1 <- corr(truegraph)
+    model2 <- corr(truegraph)
     
-    X1 <- rmvnorm(N / 2, sigma = model1$S)
-    X2 <- rmvnorm(N / 2, sigma = model2$S)
+    X1 <- simulate(model1$B, model1$O, N / 2)
+    X2 <- simulate(model2$B, model2$O, N / 2)
     
     v <- rnorm(ncol(X2))
     v <- v / sqrt(sum(v^2))
@@ -201,9 +199,6 @@ with_progress({
     saveRDS(iter_results, file_name)
     
     p(sprintf("done %d", k))
-    
-    cat("job", k, "\n")
-    cat("Time taken for file", file_name, ":", (proc.time() - timing)["elapsed"], "\n")
   }
 })
 

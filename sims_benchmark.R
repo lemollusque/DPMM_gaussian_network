@@ -66,11 +66,11 @@ results <- with_progress({
     N <- param_grid$N[j]
     n <- param_grid$n[j]
     
-    g <- er_dag(n, d=0.2)
+    g <- er_dag(n)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
-    model <- cov(truegraph)
-    X <- rmvnorm(N, sigma =  model$S)
+    model <- corr(truegraph)
+    X <- simulate(model$B, model$O, N)
     data <- standardize(X)
     
     iter_results <- data.frame()

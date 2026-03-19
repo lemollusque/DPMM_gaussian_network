@@ -19,7 +19,7 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 10
+iter <- 30
 dual <- FALSE
 
 # dirichlet params
@@ -30,7 +30,7 @@ burnin <- 90
 L <- 10
 
 param_grid <- expand.grid(
-  N = c(200),
+  N = c(100),
   n = 4,
   d = c(0, 1, 2, 5, 10),
   bge.par = 1
@@ -107,15 +107,15 @@ with_progress({
     job_seed <- make_job_seed(init.seed, k)
     set.seed(job_seed)
     
-    g <- er_dag(n, d = 0.2)
+    g <- er_dag(n)
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- cov(truegraph, lb_b = 1, ub_b = 2)
-    model2 <- cov(truegraph, lb_b = 1, ub_b = 2)
+    model1 <- corr(truegraph)
+    model2 <- corr(truegraph)
     
-    X1 <- rmvnorm(N / 2, sigma = model1$S)
-    X2 <- rmvnorm(N / 2, sigma = model2$S)
+    X1 <- simulate(model1$B, model1$O, N / 2)
+    X2 <- simulate(model2$B, model2$O, N / 2)
     
     v <- rnorm(ncol(X2))
     v <- v / sqrt(sum(v^2))
@@ -211,7 +211,7 @@ results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
 # extract benchmark
-data_benchmark <- as.data.frame(readRDS("Results/Sims_benchmark.rds"))
+data_benchmark <- as.data.frame(readRDS("Results/Sims_benchmark_cov12.rds"))
 data_benchmark <- data_benchmark %>%
   filter(graph == "pattern", 
          method %in% keep_methods,
