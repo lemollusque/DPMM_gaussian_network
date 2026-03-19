@@ -263,7 +263,7 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
 # Parallel setup
 # --------------------------------------------------
 
-n_cores <- max(1, availableCores() - 1)
+n_cores <- max(1, availableCores())
 plan(multisession, workers = n_cores)
 registerDoFuture()
 

@@ -211,7 +211,7 @@ results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 
 # extract benchmark
-data_benchmark <- as.data.frame(readRDS("Results/Sims_benchmark_cov12.rds"))
+data_benchmark <- as.data.frame(readRDS("Results/Sims_benchmark.rds"))
 data_benchmark <- data_benchmark %>%
   filter(graph == "pattern", 
          method %in% keep_methods,
