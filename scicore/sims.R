@@ -30,13 +30,13 @@ dual <- FALSE
 
 # dirichlet params
 alpha_prior <- c(2, 4)
-dp_iter <- 300
+dp_iter <- 500
 dp_fits <- 4
-burnin <- 200
+burnin <- 400
 L <- 20
 
 param_grid <- expand.grid(
-  N = c(1000),
+  N = c(100),
   n = 4,
   d = c(0, 1, 2, 5, 10),
   bge.par = 1
