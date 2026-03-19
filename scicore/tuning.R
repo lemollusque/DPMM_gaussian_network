@@ -1,17 +1,24 @@
-library(BiDAG)
-library(matrixStats)
-library(dirichletprocess)
-library(dplyr)
-library(ggplot2)
-library(foreach)
-library(doFuture)
-library(future)
-library(parallelly)
-library(aricode)
-library(mclust)
-library(openxlsx)
-library(progressr)
-library(mvtnorm)
+packages <- c(
+  "BiDAG",
+  "dirichletprocess",
+  "dplyr",
+  "ggplot2",
+  "foreach",
+  "doFuture",
+  "future",
+  "aricode",
+  "matrixStats",
+  "progressr",
+  "doRNG",
+  "mvtnorm"
+)
+
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
 
 source("dao.R")
 source("fns.R")
@@ -274,7 +281,7 @@ with_progress({
     k = seq_len(nrow(sim_grid)),
     .packages = c(
       "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
-      "aricode", "mclust", "mvtnorm"
+      "aricode",, "mvtnorm"
     )
   ) %dopar% {
     
@@ -371,52 +378,3 @@ with_progress({
     p()
   }
 })
-plan(sequential)
-
-# --------------------------------------------------
-# load combined runs
-# --------------------------------------------------
-files <- list.files("Tuning", pattern = ".*\\.rds", full.names = TRUE)
-all_runs <- bind_rows(lapply(files, readRDS))
-
-# --------------------------------------------------
-# Split outputs back apart
-# --------------------------------------------------
-
-all_sim_results_df <- all_runs %>%
-  filter(result_type == "gamma_scores") %>%
-  select(-result_type)
-
-sim_level_summary_df <- all_runs %>%
-  filter(result_type == "sim_summary") %>%
-  select(-result_type)
-
-# Hyperparameter-level summary by window
-results <- sim_level_summary_df %>%
-  group_by(
-    window, N, shift_size, n, alpha_a, alpha_b,
-    g0_id, kappa0, nu, lambda_scale
-  ) %>%
-  group_modify(~ summarise_hyperparam(.x)) %>%
-  ungroup() %>%
-  mutate(
-    from = as.numeric(sub("w(\\d+)_.*", "\\1", window)),
-    to   = as.numeric(sub(".*_(\\d+)", "\\1", window))
-  )
-
-
-# --------------------------------------------------
-# Plot
-# --------------------------------------------------
-
-ggplot(results, aes(x = to, y = hp_mean_ari)) +
-  geom_point() +
-  geom_line() +
-  geom_errorbar(
-    aes(ymin = hp_mean_ari - hp_sd_ari,
-        ymax = hp_mean_ari + hp_sd_ari),
-    width = 5
-  ) +
-  coord_cartesian(ylim = c(0, 1)) +
-  facet_grid(shift_size ~ N, scales = "free_y") +
-  theme_bw()
