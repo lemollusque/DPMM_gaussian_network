@@ -9,8 +9,8 @@
 #SBATCH --qos=1day           #You will run in this queue
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
-#SBATCH --output=out.txt     #These are the STDOUT and STDERR files
-#SBATCH --error=err.txt
+#SBATCH --output=out_tuning.txt     #These are the STDOUT and STDERR files
+#SBATCH --error=err_tuning.txt
 #SBATCH --mail-type=END,FAIL,TIME_LIMIT
 #SBATCH --mail-user=bastian.widmer@unibas.ch        #You will be notified via email when your task ends or fails
 

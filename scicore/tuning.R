@@ -281,7 +281,7 @@ with_progress({
     k = seq_len(nrow(sim_grid)),
     .packages = c(
       "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
-      "aricode",, "mvtnorm"
+      "aricode", "mvtnorm"
     )
   ) %dopar% {
     
