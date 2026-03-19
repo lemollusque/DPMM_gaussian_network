@@ -9,5 +9,6 @@ saveout/
 plots/
 Results/
 Sims/
+old_Sims/
 Tuning/
 logfile.txt
