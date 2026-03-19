@@ -10,6 +10,7 @@ packages <- c(
   "matrixStats",
   "progressr",
   "doRNG",
+  "mclust",
   "mvtnorm"
 )
 
@@ -281,7 +282,7 @@ with_progress({
     k = seq_len(nrow(sim_grid)),
     .packages = c(
       "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
-      "aricode", "mvtnorm"
+      "aricode", "mclust", "mvtnorm"
     )
   ) %dopar% {
     
