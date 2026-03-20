@@ -24,6 +24,7 @@ dual <- FALSE
 
 # dirichlet params
 alpha_prior <- c(2, 4)
+initial_clusters <- 10
 dp_iter <- 100
 dp_fits <- 1
 burnin <- 90
@@ -111,18 +112,9 @@ with_progress({
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- corr(truegraph)
-    model2 <- corr(truegraph)
-    
-    X1 <- simulate(model1$B, model1$O, N / 2)
-    X2 <- simulate(model2$B, model2$O, N / 2)
-    
-    v <- rnorm(ncol(X2))
-    v <- v / sqrt(sum(v^2))
-    shift <- d * v
-    X2 <- sweep(X2, 2, shift, "+")
-    
-    data <- standardize(rbind(X1, X2))
+    model <- corr(truegraph)
+    X <- simulate_bimodal(model$B, model$O, n=N, bimodal_sep=d)
+    data <- standardize(X)
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
@@ -130,7 +122,9 @@ with_progress({
     # prepare dirichlet gamma list
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
-      dp <- DirichletProcessMvnormal(data, alphaPriors = alpha_prior)
+      dp <- DirichletProcessMvnormal(data, 
+                                     alphaPriors = alpha_prior,
+                                     numInitialClusters = initial_clusters)
       dp <- Fit(dp, dp_iter, progressBar = FALSE)
       
       Gamma_sample <- dp_membership_probs(dp, burnin, L)

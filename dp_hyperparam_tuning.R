@@ -12,29 +12,31 @@ library(mclust)
 library(openxlsx)
 library(progressr)
 library(mvtnorm)
+library(doFuture)
+library(doRNG)
 
 source("dao.R")
+source("dualPC.R")
 source("fns.R")
 
 # --------------------------------------------------
 # Settings
 # --------------------------------------------------
 
-iter <- 10
+iter <- 30
 n <- 4
-shift_sizes <- c(1, 3, 5)
+shift_sizes <- c(1, 2, 3, 5, 10)
 
-N_samples <- c(100, 200, 300, 400, 500)
-dp_fits <- 4
-dp_iter <- 500
+N_samples <- c(100)
+dp_fits <- 1
+dp_iter <- 60
 
 sample_windows <- list(
+  w10_20   = 10:20,
+  w20_30   = 20:30,
+  w30_40   = 30:40,
   w40_50   = 40:50,
-  w90_100  = 90:100,
-  w190_200 = 190:200,
-  w290_300 = 290:300,
-  w390_400 = 390:400,
-  w490_500 = 490:500
+  w50_60   = 50:60
 )
 
 alpha_grid <- list(
@@ -44,6 +46,7 @@ alpha_grid <- list(
 g0_grid <- list(
   list(mu0 = rep(0, n), kappa0 = n, nu = n, Lambda = diag(n))
 )
+
 
 # Hyperparameter grid
 param_grid <- expand.grid(
@@ -172,20 +175,12 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
   g <- sf_out(g)
   truegraph <- randomize_graph(g)
   
-  model1 <- corr(truegraph)
-  model2 <- corr(truegraph)
-  
-  X1 <- simulate(model1$B, model1$O, N / 2)
-  X2 <- simulate(model2$B, model2$O, N / 2)
-  
-  v <- rnorm(ncol(X2))
-  v <- v / sqrt(sum(v^2))
-  shift <- shift_size * v
-  X2 <- sweep(X2, 2, shift, "+")
-  
-  data <- standardize(rbind(X1, X2))
+  model <- corr(truegraph)
+  data_simulation <- simulate_bimodal_for_tuning(model$B, model$O, n=N, bimodal_sep=shift_size)
+  data <- standardize(data_simulation$X)
   colnames(data) <- paste0("v", seq_len(ncol(data)))
-  truth <- c(rep("X1", N / 2), rep("X2", N / 2))
+  
+  truth <- ifelse(data_simulation$cluster == -1, "X1", "X2")
   
   gamma_scores_all <- vector("list", dp_fits * length(sample_iters))
   gamma_counter <- 1
@@ -194,7 +189,8 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
     dp <- DirichletProcessMvnormal(
       data,
       g0Priors = g0_prior,
-      alphaPriors = alpha_prior
+      alphaPriors = alpha_prior,
+      numInitialClusters = 10
     )
     
     dp <- Fit(dp, dp_iter)
@@ -259,6 +255,9 @@ run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
 n_cores <- max(1, availableCores() - 1)
 plan(multisession, workers = n_cores)
 registerDoFuture()
+plan(multisession)
+
+set.seed(123)  # ensures reproducibility
 
 handlers(global = TRUE)
 handlers("progress")
@@ -274,9 +273,9 @@ with_progress({
     k = seq_len(nrow(sim_grid)),
     .packages = c(
       "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
-      "aricode", "mclust", "mvtnorm"
+      "aricode", "mclust", "mvtnorm", "doRNG"
     )
-  ) %dopar% {
+  ) %dorng% {
     
     source("dao.R")
     source("fns.R")
@@ -394,8 +393,7 @@ sim_level_summary_df <- all_runs %>%
 # Hyperparameter-level summary by window
 results <- sim_level_summary_df %>%
   group_by(
-    window, N, shift_size, n, alpha_a, alpha_b,
-    g0_id, kappa0, nu, lambda_scale
+    window, N, shift_size, n
   ) %>%
   group_modify(~ summarise_hyperparam(.x)) %>%
   ungroup() %>%
