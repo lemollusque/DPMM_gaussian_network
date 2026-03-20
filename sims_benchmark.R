@@ -81,12 +81,12 @@ results <- with_progress({
       
       bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
       iter_results <- compare_results(
-        bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+        bge.fit, c(bge.par, "BGe, partition"), iter_results,  t(truegraph)
       )
       
       bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
       iter_results <- compare_results(
-        bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+        bge.fit, c(bge.par, "BGe, order"), iter_results,  t(truegraph)
       )
     }
     

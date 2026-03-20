@@ -22,9 +22,9 @@ init.seed <- 100
 iter <- 30
 dual <- FALSE
 param_grid <- expand.grid(
-  N = c(100, 200, 500, 1000),
-  n = c(4,10),
-  d = 0:10,
+  N = c(100, 200),
+  n = c(4),
+  d = 0:3,
   bge.par = 1
 )
 sim_grid <- expand.grid(
@@ -95,12 +95,12 @@ results <- with_progress({
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, t(truegraph)
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, order"), iter_results, t(truegraph)
     )
     
     iter_results$N <- N
@@ -117,7 +117,7 @@ colnames(results) <- c(
   "time", "parameter", "method", "graph", "N", "n", "d"
 )
 
-saveRDS(results, "Results/Sims_bimodal_bge_student.rds")
+saveRDS(results, "Results/Sims_bimodal_bge.rds")
 #results <- as.data.frame(readRDS("Results/Sims_bimodal_bge_student.rds"))
 
 # plots resutts

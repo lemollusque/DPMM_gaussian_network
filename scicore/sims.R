@@ -164,22 +164,22 @@ with_progress({
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, partition"), iter_results,  t(truegraph)
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, order"), iter_results,  t(truegraph)
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results, truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  t(truegraph)
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results, truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  t(truegraph)
     )
     
     iter_results$N <- N
