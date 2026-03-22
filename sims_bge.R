@@ -19,12 +19,12 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 30
+iter <- 100
 dual <- FALSE
 param_grid <- expand.grid(
-  N = c(100, 200),
-  n = c(4),
-  d = 0:3,
+  N = c(1000),
+  n = c(10),
+  d = c(0,1,2,5,10),
   bge.par = 1
 )
 sim_grid <- expand.grid(
@@ -72,18 +72,10 @@ results <- with_progress({
     g <- sf_out(g)
     truegraph <- randomize_graph(g)
     
-    model1 <- corr(truegraph)
-    model2 <- corr(truegraph)
+    model <- corr(truegraph)
+    X <- simulate_bimodal(model$B, model$O, n=N, bimodal_sep=d)
+    data <- standardize(X)
     
-    X1 <- simulate(model1$B, model1$O, N / 2)
-    X2 <- simulate(model2$B, model2$O, N / 2)
-    
-    v <- rnorm(ncol(X2))
-    v <- v / sqrt(sum(v^2))
-    shift <- d * v
-    X2 <- sweep(X2, 2, shift, "+")
-    
-    data <- standardize(rbind(X1, X2))
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
@@ -126,7 +118,7 @@ keep_methods <- c("BGe, partition", "BGe, order")
 results_small <- results %>%
   filter(graph == "pattern", 
          method %in% keep_methods,
-         n == 4) 
+         n == 10) 
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))

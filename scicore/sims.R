@@ -31,13 +31,13 @@ dual <- FALSE
 # dirichlet params
 alpha_prior <- c(2, 4)
 initial_clusters <- 10
-dp_iter <- 60
+dp_iter <- 500
 dp_fits <- 4
-burnin <- 30
-L <- 10
+burnin <- 400
+L <- 20
 
 param_grid <- expand.grid(
-  N = c(100),
+  N = c(1000),
   n = 4,
   d = c(0, 1, 2, 5, 10),
   bge.par = 1
