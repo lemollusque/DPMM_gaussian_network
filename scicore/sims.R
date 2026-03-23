@@ -31,15 +31,15 @@ dual <- FALSE
 # dirichlet params
 alpha_prior <- c(2, 4)
 initial_clusters <- 10
-dp_iter <- 500
-dp_fits <- 4
-burnin <- 400
-L <- 20
+dp_iter <- 200
+dp_fits <- 2
+burnin <- 190
+L <- 10
 
 param_grid <- expand.grid(
   N = c(1000),
-  n = 4,
-  d = c(0, 1, 2, 5, 10),
+  n = 10,
+  d = c(0, 0.5, 1),
   bge.par = 1
 )
 
@@ -117,11 +117,9 @@ with_progress({
     
     g <- er_dag(n)
     g <- sf_out(g)
-    truegraph <- randomize_graph(g)
-    
-    model <- corr(truegraph)
-    X <- simulate_bimodal(model$B, model$O, n=N, bimodal_sep=d)
-    data <- standardize(X)
+    g <- randomize_graph(g)
+    truegraph = t(g)
+    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
 
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -158,24 +156,25 @@ with_progress({
     
     iter_results <- data.frame()
     
+    
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results,  t(truegraph)
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results,  t(truegraph)
+      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  t(truegraph)
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  t(truegraph)
+      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
     )
     
     iter_results$N <- N
@@ -197,4 +196,3 @@ with_progress({
     p(sprintf("done %d", k))
   }
 })
-

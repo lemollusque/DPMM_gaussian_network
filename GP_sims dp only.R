@@ -19,21 +19,21 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 30
+iter <- 100
 dual <- FALSE
 
 # dirichlet params
 alpha_prior <- c(2, 4)
 initial_clusters <- 10
-dp_iter <- 100
-dp_fits <- 1
-burnin <- 90
+dp_iter <- 200
+dp_fits <- 2
+burnin <- 190
 L <- 10
 
 param_grid <- expand.grid(
   N = c(1000),
-  n = 4,
-  d = c(0, 1, 2, 5, 10),
+  n = 10,
+  d = c(0, 0.5, 1),
   bge.par = 1
 )
 
@@ -79,6 +79,7 @@ with_progress({
     source("dualPC.R")
     source("dao.R")
     source("fns.R")
+    source("Fourier_fns.R")
     insertSource("fns.R", package = "BiDAG")
     
     # set params
@@ -108,14 +109,12 @@ with_progress({
     job_seed <- make_job_seed(init.seed, i)
     set.seed(job_seed)
     
-    
     g <- er_dag(n)
     g <- sf_out(g)
-    truegraph <- randomize_graph(g)
+    g <- randomize_graph(g)
+    truegraph = t(g)
+    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
     
-    model <- corr(truegraph)
-    X <- simulate_bimodal(model$B, model$O, n=N, bimodal_sep=d)
-    data <- standardize(X)
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
@@ -151,24 +150,25 @@ with_progress({
     
     iter_results <- data.frame()
     
+    
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results,  t(truegraph)
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results,  t(truegraph)
+      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  t(truegraph)
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  t(truegraph)
+      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
     )
     
     iter_results$N <- N

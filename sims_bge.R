@@ -24,7 +24,7 @@ dual <- FALSE
 param_grid <- expand.grid(
   N = c(1000),
   n = c(10),
-  d = c(0,1,2,5,10),
+  d = c(0, 0.5, 1),
   bge.par = 1
 )
 sim_grid <- expand.grid(
@@ -82,11 +82,9 @@ results <- with_progress({
     
     g <- er_dag(n)
     g <- sf_out(g)
-    truegraph <- randomize_graph(g)
-    
-    model <- corr(truegraph)
-    X <- simulate_bimodal(model$B, model$O, n=N, bimodal_sep=d)
-    data <- standardize(X)
+    g <- randomize_graph(g)
+    truegraph = t(g)
+    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
     
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -99,12 +97,12 @@ results <- with_progress({
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, t(truegraph)
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, t(truegraph)
+      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
     )
     
     iter_results$N <- N
@@ -122,7 +120,7 @@ colnames(results) <- c(
 )
 
 saveRDS(results, "Results/Sims_bimodal_bge.rds")
-#results <- as.data.frame(readRDS("Results/Sims_bimodal_bge_student.rds"))
+#results <- as.data.frame(readRDS("Results/Sims_bimodal_bge.rds"))
 
 # plots resutts
 keep_methods <- c("BGe, partition", "BGe, order")
