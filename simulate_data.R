@@ -13,6 +13,7 @@ library(doRNG)
 library(mvtnorm)
 
 source("comparison_algs.R")
+source("Fourier_fns.R")
 source("dualPC.R")
 source("dao.R")
 source("fns.R")
@@ -22,48 +23,47 @@ set.seed(1)
 
 N = 1000
 n = 4
+
+
+plot_simulated_data <- function(data, title){
+  # ---- pairwise 4x4 plot ----
+  panel.density <- function(x, ...) {
+    usr <- par("usr")
+    on.exit(par(usr = usr))
+    par(usr = c(usr[1:2], 0, 1.5))
+    d <- density(x)
+    y <- d$y / max(d$y)
+    lines(d$x, y, lwd=2)
+  }
+  
+  panel.scatter <- function(x, y, ...) {
+    points(x, y, pch=16, cex=0.5, ...)
+  }
+  
+  pairs(data,
+        diag.panel=panel.density,
+        lower.panel=panel.scatter,
+        upper.panel=panel.scatter,
+        main=title)
+}
+
+# generate graph
 g <- er_dag(n)
 g <- sf_out(g)
-truegraph <- randomize_graph(g)
+g <- randomize_graph(g)
 
-model <- corr(truegraph)
-
-X <- simulate_bimodal(model$B, model$O, n=N, bimodal_sep=6)
-data <- standardize(X)
-
-# ---- marginal densities ----
-op <- par(mfrow=c(2, 2), mar=c(4, 4, 3, 1))
-
-for (i in 1:ncol(data)) {
-  hist(data[, i],
-       probability=TRUE,
-       breaks=30,
-       main=paste("Distribution of X", i),
-       xlab=paste("X", i),
-       col="lightgray")
-  lines(density(data[, i]), lwd=2)
+truegraph <- t(g)
+for(row in 1:ncol(truegraph)){
+  cat(truegraph[row,], "\n")
 }
+# run bimodal data
+data <- simulate_bimodal(g, n=N, bimodal_sep=2)
+plot_simulated_data(data, "Bimodal data")
 
-par(op)
+# run bimodal on single node data
+data <- simulate_bimodal_one_node(g, n=N, bimodal_sep=2)
+plot_simulated_data(data, "One node Bimodal data")
 
-# ---- pairwise 4x4 plot ----
-panel.density <- function(x, ...) {
-  usr <- par("usr")
-  on.exit(par(usr))
-  par(usr = c(usr[1:2], 0, 1.5))
-  d <- density(x)
-  y <- d$y / max(d$y)
-  lines(d$x, y, lwd=2)
-}
-
-panel.scatter <- function(x, y, ...) {
-  points(x, y, pch=16, cex=0.5, ...)
-}
-
-pairs(data,
-      diag.panel=panel.density,
-      lower.panel=panel.scatter,
-      upper.panel=panel.scatter,
-      main="Pairwise distributions of the 4 variables")
-
-print(t(truegraph))
+# fourier data
+data <- Fou_nldata(truegraph, N, lambda = 1, noise.sd = 1, standardize = T)
+plot_simulated_data(data, "Fourier data")
