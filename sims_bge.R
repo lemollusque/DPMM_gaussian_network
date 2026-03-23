@@ -32,6 +32,10 @@ sim_grid <- expand.grid(
   i = seq_len(iter)
 )
 
+make_job_seed <- function(init.seed, k) {
+  init.seed + k
+}
+
 n_cores <- max(1, availableCores() - 1)
 
 plan(multisession, workers = n_cores)
@@ -48,12 +52,13 @@ results <- with_progress({
     k = seq_len(nrow(sim_grid)),
     .combine = rbind,
     .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust")
-  ) %dorng% {
+  ) %dopar% {
     
     source("comparison_algs.R")
     source("dualPC.R")
     source("dao.R")
     source("fns.R")
+    source("Fourier_fns.R")
     insertSource("fns.R", package = "BiDAG")
     
     # show progress
@@ -67,6 +72,13 @@ results <- with_progress({
     n <- param_grid$n[j]
     d <- param_grid$d[j]
     bge.par <- param_grid$bge.par[j]
+    
+    
+    
+    # deterministic per-job seed
+    job_seed <- make_job_seed(init.seed, i +  100)
+    set.seed(job_seed)
+    
     
     g <- er_dag(n)
     g <- sf_out(g)

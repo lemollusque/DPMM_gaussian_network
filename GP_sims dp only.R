@@ -73,7 +73,7 @@ with_progress({
   foreach(
     k = seq_len(nrow(sim_grid)),
     .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust", "mvtnorm")
-  ) %dorng% {
+  ) %dopar% {
     
     source("comparison_algs.R")
     source("dualPC.R")
@@ -105,8 +105,9 @@ with_progress({
     }
     
     # deterministic per-job seed
-    job_seed <- make_job_seed(init.seed, k)
+    job_seed <- make_job_seed(init.seed, i)
     set.seed(job_seed)
+    
     
     g <- er_dag(n)
     g <- sf_out(g)
