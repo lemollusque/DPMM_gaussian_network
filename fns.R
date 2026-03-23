@@ -469,6 +469,31 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
   list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
        maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time)
 }
+set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
+  start <- Sys.time()
+  startspace <- NULL
+  
+  if(dual) {
+    cor_mat <- cor(data)
+    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+  }
+  
+  if(method == "DP") {
+    score <- scoreparameters("usr", data, usrpar = usrpar)
+  }
+  
+  if(method == "bge") {
+    score <- scoreparameters("bge", data, bgepar = list(am = par))
+  }
+  startspace <- matrix(1, ncol(data), ncol(data), 
+                      dimnames=list(colnames(data), colnames(data)))
+  diag(startspace) <- 0
+  searchspace = list(scoretable = NULL, DAG = NULL, maxorder = NULL, endspace = startspace)
+  time <- Sys.time() - start
+  
+  list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
+       maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time)
+}
 DP.partition.mcmc <- function(searchspace, alpha = 0.05, 
                                order = FALSE, burnin = 0.33, iterations = 600) {
   start <- Sys.time()
@@ -552,7 +577,7 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2) {
   model <- corr(g)
   B <- model$B
   O <- model$O
-  
+
   # p = |variables|
   p <- ncol(B)
   
