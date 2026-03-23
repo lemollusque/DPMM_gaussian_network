@@ -444,55 +444,8 @@ test_compare_dp_vs_bge <- function(usr_score_param,
 }
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-## Sample DAGs with BiDAG
+## Run MCMC
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-sampleDAGs <- function(inData, nDigraphs = 50, seed=101, dname="", ...){
-  n <- ncol(inData) # number of variables
-  stepsave <- 10*round(n*n*log(n)) ## thinning interval, 
-  ## to improve the properties of the chain (sample independence)
-  iterations <- nDigraphs*stepsave ## nDAGs is the desired size of the DAGs ensemble
-  
-  if(!dir.exists("./saveout")) {dir.create("./saveout")} ## create output folder if it doesn't exist
-  if(!file.exists(paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))){
-    # initialise the score object needed for later functions
-    scoreObject <- BiDAG::scoreparameters(data=inData, ..., 
-                                   nodeslabels = colnames(inData))
-    set.seed(seed) 
-    ## set the seed for the generation of random numbers (for reproducibility)
-    
-    # find the search space with iterative search
-    itFit <- BiDAG::iterativeMCMC(scoreObject, 
-                           startorder = sample(c(1:n)), 
-                           scoreout = TRUE) ## find iterative search space
-    searchSpace <- itFit$endspace
-    
-    # sample a starting DAG with order MCMC
-    # the default length of the chain is 6*n^2/log(n)
-    # orderSample$score is the score for the highest scoring DAG found
-    orderSample <- BiDAG::orderMCMC(scoreObject, 
-                             MAP = FALSE, 
-                             startspace = searchSpace, 
-                             startorder = sample(c(1:n)), 
-                             chainout = TRUE)
-    startDAG <- dplyr::last(orderSample$traceadd$incidence) # extract selected (last) DAG
-    startDAGscore <- dplyr::last(orderSample$trace) # extract score for the selected DAG
-    
-    # sample an ensemble of nDAGs DAGs from the posterior by using partition MCMC
-    partitionSample <- BiDAG::partitionMCMC(scoreObject, 
-                                     startspace = searchSpace, 
-                                     startDAG = startDAG, 
-                                     iterations = iterations, 
-                                     stepsave = stepsave)
-    
-    ## extract the collection of sampled DAGs
-    sampledDAGs <- partitionSample$traceadd$incidence 
-    DAGscores <-partitionSample$trace # extract their scores
-    
-    ## save the the collection of sampled DAGs and their scores to an .RData file
-    save(sampledDAGs, DAGscores, scoreObject,
-         file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
-  }
-}  
 set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
   startspace <- NULL
@@ -710,6 +663,56 @@ simulate_bimodal_for_tuning <- function(B, O, n, err=NULL, bimodal_sep=2) {
   
   return(list(X=X, cluster=bimodal_error_data$cluster))  
 }
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Sample DAGs with BiDAG
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+sampleDAGs <- function(inData, nDigraphs = 50, seed=101, dname="", ...){
+  n <- ncol(inData) # number of variables
+  stepsave <- 10*round(n*n*log(n)) ## thinning interval, 
+  ## to improve the properties of the chain (sample independence)
+  iterations <- nDigraphs*stepsave ## nDAGs is the desired size of the DAGs ensemble
+  
+  if(!dir.exists("./saveout")) {dir.create("./saveout")} ## create output folder if it doesn't exist
+  if(!file.exists(paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))){
+    # initialise the score object needed for later functions
+    scoreObject <- BiDAG::scoreparameters(data=inData, ..., 
+                                   nodeslabels = colnames(inData))
+    set.seed(seed) 
+    ## set the seed for the generation of random numbers (for reproducibility)
+    
+    # find the search space with iterative search
+    itFit <- BiDAG::iterativeMCMC(scoreObject, 
+                           startorder = sample(c(1:n)), 
+                           scoreout = TRUE) ## find iterative search space
+    searchSpace <- itFit$endspace
+    
+    # sample a starting DAG with order MCMC
+    # the default length of the chain is 6*n^2/log(n)
+    # orderSample$score is the score for the highest scoring DAG found
+    orderSample <- BiDAG::orderMCMC(scoreObject, 
+                             MAP = FALSE, 
+                             startspace = searchSpace, 
+                             startorder = sample(c(1:n)), 
+                             chainout = TRUE)
+    startDAG <- dplyr::last(orderSample$traceadd$incidence) # extract selected (last) DAG
+    startDAGscore <- dplyr::last(orderSample$trace) # extract score for the selected DAG
+    
+    # sample an ensemble of nDAGs DAGs from the posterior by using partition MCMC
+    partitionSample <- BiDAG::partitionMCMC(scoreObject, 
+                                     startspace = searchSpace, 
+                                     startDAG = startDAG, 
+                                     iterations = iterations, 
+                                     stepsave = stepsave)
+    
+    ## extract the collection of sampled DAGs
+    sampledDAGs <- partitionSample$traceadd$incidence 
+    DAGscores <-partitionSample$trace # extract their scores
+    
+    ## save the the collection of sampled DAGs and their scores to an .RData file
+    save(sampledDAGs, DAGscores, scoreObject,
+         file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
+  }
+}  
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Internal function to set-up plot style
 ## Define some default plotting settings for the effects
