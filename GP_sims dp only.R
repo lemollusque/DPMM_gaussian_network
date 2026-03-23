@@ -203,22 +203,6 @@ results_small <- results %>%
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
-
-# extract benchmark
-data_benchmark <- as.data.frame(readRDS("Results/Sims_benchmark.rds"))
-data_benchmark <- data_benchmark %>%
-  filter(graph == "pattern", 
-         method %in% keep_methods,
-         n==param_grid$n[1],
-         N==param_grid$N[1]) 
-data_benchmark <- data_benchmark %>%
-  mutate(ESHD = as.numeric(ESHD))
-
-# add single multivariate gaussian benchmark
-benchmark_medians <- data_benchmark %>%
-  group_by(method) %>%
-  summarise(median_ESHD = median(ESHD, na.rm = TRUE), .groups = "drop")
-
 # add text medians
 medians <- results_small %>%
   group_by(method, N, n, d) %>%
@@ -234,15 +218,7 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
     vjust = -0.7,
     size = 3
   ) +
-  geom_hline(
-    data = benchmark_medians,
-    aes(yintercept = median_ESHD, color = method),
-    linetype = "dashed",
-    linewidth = 1,
-    show.legend = FALSE
-  ) +
   
-  coord_cartesian(ylim = c(0, 6)) +
   labs(x = NULL, y = "E=SHD") +
   facet_grid( ~ d, scales = "free_y") +
   theme_bw() +
@@ -251,4 +227,3 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
     panel.grid.major.x = element_blank()
   )
-
