@@ -566,6 +566,23 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
 ## Generate data
 ## 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+simulate_bimodal <- function(dag, n, bimodal_sep=2) {
+    model1 <- corr(dag)
+    model2 <- corr(dag)
+    
+    X1 <- simulate(model1$B, model1$O, n / 2)
+    X2 <- simulate(model2$B, model2$O, n / 2)
+    
+    v <- rnorm(ncol(X2))
+    v <- v / sqrt(sum(v^2))
+    shift <- bimodal_sep * v
+    X2 <- sweep(X2, 2, shift, "+")
+    data <- standardize(rbind(X1, X2))
+    if (is.null(colnames(data))) {
+      colnames(data) <- paste0("v", seq_len(ncol(data)))
+    }
+    data    
+}
 bimodal_err <- function(n, var, sep_sd=2) {
   sd0 <- sqrt(var)
   shift <- sep_sd * sd0
@@ -573,12 +590,15 @@ bimodal_err <- function(n, var, sep_sd=2) {
   rnorm(n, mean=comp * shift, sd=sd0)
 }
 
-simulate_bimodal <- function(B, O, n, err=NULL, bimodal_sep=2) {
+simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2) {
   # Randomly simulates data.
-  # B = (lower triangular) beta matrix
-  # O = (diagonal entries) error matrix
+  # g = dag
   # n = sample size
   # err = additive error distribution
+  
+  model <- corr(g)
+  B <- model$B
+  O <- model$O
   
   # p = |variables|
   p <- ncol(B)
@@ -623,6 +643,10 @@ simulate_bimodal <- function(B, O, n, err=NULL, bimodal_sep=2) {
   ord <- invert_order(ord)
   X <- X[, ord]
   
+  X <- standardize(X)
+  if (is.null(colnames(X))) {
+    colnames(X) <- paste0("v", seq_len(ncol(X)))
+  }
   return(X)  
 }
 bimodal_err_for_tuning <- function(n, var, sep_sd=2) {
