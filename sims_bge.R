@@ -20,13 +20,16 @@ insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
 iter <- 100
-dual <- FALSE
+dual <- TRUE
+
+
 param_grid <- expand.grid(
-  N = c(1000),
-  n = c(10),
+  N = c(100),
+  n = 10,
   d = c(0, 0.5, 1),
-  bge.par = 1
+  bge.par = 0.01
 )
+
 sim_grid <- expand.grid(
   j = seq_len(nrow(param_grid)),
   i = seq_len(iter)
@@ -34,6 +37,18 @@ sim_grid <- expand.grid(
 
 make_job_seed <- function(init.seed, k) {
   init.seed + k
+}
+
+make_file_name <- function(N, n, d, bge.par, i) {
+  paste0(
+    "Sims/",
+    "N", N,
+    "_n", n,
+    "_d", d,
+    "_bge", bge.par,
+    "_rep", sprintf("%03d", i),
+    ".rds"
+  )
 }
 
 n_cores <- max(1, availableCores() - 1)
@@ -45,13 +60,12 @@ registerDoRNG(init.seed)
 handlers(global = TRUE)
 handlers("txtprogressbar")
 
-results <- with_progress({
+with_progress({
   p <- progressor(steps = nrow(sim_grid))
   
   foreach(
     k = seq_len(nrow(sim_grid)),
-    .combine = rbind,
-    .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust")
+    .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust", "mvtnorm")
   ) %dopar% {
     
     source("comparison_algs.R")
@@ -61,39 +75,43 @@ results <- with_progress({
     source("Fourier_fns.R")
     insertSource("fns.R", package = "BiDAG")
     
-    # show progress
-    p()
-    
     # set params
     j <- sim_grid$j[k]
     i <- sim_grid$i[k]
-  
+    
     N <- param_grid$N[j]
     n <- param_grid$n[j]
     d <- param_grid$d[j]
     bge.par <- param_grid$bge.par[j]
     
+    file_name <- make_file_name(
+      N = N,
+      n = n,
+      d = d,
+      bge.par = bge.par,
+      i = i
+    )
     
-    
-    # deterministic per-job seed
-    job_seed <- make_job_seed(init.seed, i +  100)
-    set.seed(job_seed)
-    
-    
-    g <- er_dag(n)
-    g <- sf_out(g)
-    g <- randomize_graph(g)
-    truegraph = t(g)
-    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
-    
-    if (is.null(colnames(data))) {
-      colnames(data) <- paste0("v", seq_len(ncol(data)))
+    # resume logic: skip completed jobs
+    if (file.exists(file_name)) {
+      p(sprintf("skip %d", k))
+      return(NULL)
     }
     
-    bge.searchspace = set.searchspace(data, dual, "bge", bge.par)
+    # deterministic per-job seed
+    job_seed <- make_job_seed(init.seed, i)
+    set.seed(job_seed)
     
+    myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
+    trueDAG <- as(myDAG, "matrix")
+    truegraph <- 1*(trueDAG != 0)
+    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
+    
+    
+    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
     
     iter_results <- data.frame()
+    
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
@@ -108,44 +126,57 @@ results <- with_progress({
     iter_results$N <- N
     iter_results$n <- n
     iter_results$d <- d
+    iter_results$rep <- i
+    iter_results$bge.par <- bge.par
+    iter_results$job_id <- k
+    iter_results$job_seed <- job_seed
     
-    iter_results
+    colnames(iter_results) <- c(
+      "ESHD", "eTP", "eFP", "TPR", "FPR_P",
+      "time", "parameter", "method", "graph",
+      "N", "n", "d", "rep", "bge.par", "job_id", "job_seed"
+    )
+    
+    saveRDS(iter_results, file_name)
+    
+    p(sprintf("done %d", k))
   }
 })
+
 future::plan(sequential)
 
-colnames(results) <- c(
-  "ESHD", "eTP", "eFP", "TPR", "FPR_P",
-  "time", "parameter", "method", "graph", "N", "n", "d"
-)
-
-saveRDS(results, "Results/Sims_bimodal_bge.rds")
-#results <- as.data.frame(readRDS("Results/Sims_bimodal_bge.rds"))
+files <- list.files("Sims", pattern = "\\.rds$", full.names = TRUE)
+results <- bind_rows(lapply(files, readRDS))
 
 # plots resutts
-keep_methods <- c("BGe, partition", "BGe, order")
+keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")
 
 results_small <- results %>%
-  filter(graph == "pattern", 
-         method %in% keep_methods,
-         n == 10) 
+  filter(graph == "pattern", method %in% keep_methods) 
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
-
+# add text medians
 medians <- results_small %>%
-  group_by(method, N, d) %>%
-  summarise(medians_ESHD = median(ESHD), .groups = "drop")
+  group_by(method, N, n, d) %>%
+  summarise(median_ESHD = median(ESHD), .groups = "drop")
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
-  geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA) +
-  geom_jitter(width = 0.12, alpha = 0.5) +
+  geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.7, size = 1.2) +
   geom_text(
     data = medians,
-    aes(x = method, y = medians_ESHD, label = round(medians_ESHD,2)),
+    aes(x = method, y = median_ESHD, label = round(median_ESHD,2)),
     color = "black",
     vjust = -0.7,
     size = 3
   ) +
-  facet_grid(d ~ N, scales = "free_y") +
-  theme_bw()
+  
+  labs(x = NULL, y = "E=SHD") +
+  facet_grid( ~ d, scales = "free_y") +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid.major.x = element_blank()
+  )
