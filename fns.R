@@ -472,13 +472,52 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
 set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
   startspace <- NULL
-  
-  if(dual) {
-    cor_mat <- cor(data)
-    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
-  }
-  
+    
   if(method == "DP") {
+    # prepare dirichlet gamma list
+    Gamma_list <- list()
+    for (f in seq_len(dp_fits)) {
+      dp <- DirichletProcessMvnormal(data, 
+                                     numInitialClusters = 10)
+      dp <- Fit(dp, dp_iter, progressBar = FALSE)
+      
+      Gamma_sample <- dp_membership_probs(dp, burnin, L)
+      Gamma_list <- add_membershipp(
+        Gamma_list,
+        Gamma_sample,
+        child = colnames(data)[1],
+        parents = colnames(data),
+        active = TRUE
+      )
+    }
+    
+    if(dual) {
+      # start searchspace
+      alpha = 0.05
+      cor_mat <- cor(data)
+      startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+      
+      # Find nodes with any incoming OR outgoing edges
+      idx <- which(rowSums(startspace) > 0 | colSums(startspace) > 0)
+      # Get node names
+      nodes <- rownames(startspace)[idx]
+      
+      for (f in seq_len(dp_fits)) {
+        dp <- DirichletProcessMvnormal(data[, nodes, drop = FALSE],
+                                       numInitialClusters = 10)
+        dp <- Fit(dp, dp_iter, progressBar = FALSE)
+        
+        Gamma_sample <- dp_membership_probs(dp, burnin, L)
+        Gamma_list <- add_membershipp(
+          Gamma_list,
+          Gamma_sample,
+          child = colnames(data[, nodes])[1],
+          parents = colnames(data[, nodes]),
+          active = TRUE
+        )
+      }
+    }
+    usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
   }
   

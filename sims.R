@@ -20,21 +20,19 @@ insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
 iter <- 100
-dual <- FALSE
+dual <- TRUE
 
 # dirichlet params
-alpha_prior <- c(2, 4)
-initial_clusters <- 10
 dp_iter <- 200
 dp_fits <- 2
-burnin <- 190
+burnin <- 180
 L <- 10
 
 param_grid <- expand.grid(
-  N = c(1000),
+  N = c(600),
   n = 10,
   d = c(0, 0.5, 1),
-  bge.par = 1
+  bge.par = 0.01
 )
 
 sim_grid <- expand.grid(
@@ -109,44 +107,25 @@ with_progress({
     job_seed <- make_job_seed(init.seed, i)
     set.seed(job_seed)
     
-    g <- er_dag(n)
-    g <- sf_out(g)
-    g <- randomize_graph(g)
-    truegraph = t(g)
+    myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
+    trueDAG <- as(myDAG, "matrix")
+    truegraph <- 1*(trueDAG != 0)
     data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
     
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
     
-    # prepare dirichlet gamma list
-    Gamma_list <- list()
-    for (f in seq_len(dp_fits)) {
-      dp <- DirichletProcessMvnormal(data, 
-                                     alphaPriors = alpha_prior,
-                                     numInitialClusters = initial_clusters)
-      dp <- Fit(dp, dp_iter, progressBar = FALSE)
-      
-      Gamma_sample <- dp_membership_probs(dp, burnin, L)
-      Gamma_list <- add_membershipp(
-        Gamma_list,
-        Gamma_sample,
-        child = colnames(data)[1],
-        parents = colnames(data)[2:ncol(data)],
-        active = TRUE
-      )
-    }
     
+    # dp settings
     dp_usrpar <- list(
       pctesttype = "bge",
-      am = bge.par,
-      membershipp_list = Gamma_list,
-      edgepf = 1
+      am = bge.par
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace(data, dual, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
+    DP.searchspace <- set.searchspace.fullspace(data, dual, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace.fullspace(data, dual, "bge", bge.par)
     
     iter_results <- data.frame()
     
