@@ -474,6 +474,11 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
   startspace <- NULL
     
   if(method == "DP") {
+    # dirichlet params
+    dp_iter <- usrpar$dp_iter
+    dp_fits <- usrpar$dp_fits
+    burnin <- usrpar$burnin
+    L <- usrpar$L
     # prepare dirichlet gamma list
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
@@ -489,7 +494,7 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
         parents = colnames(data),
         active = TRUE
       )
-    }
+    } 
     
     if(dual) {
       # start searchspace

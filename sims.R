@@ -14,6 +14,7 @@ library(mvtnorm)
 
 source("comparison_algs.R")
 source("dualPC.R")
+source("Fourier_fns.R")
 source("dao.R")
 source("fns.R")
 insertSource("fns.R", package = "BiDAG")
@@ -120,7 +121,11 @@ with_progress({
     # dp settings
     dp_usrpar <- list(
       pctesttype = "bge",
-      am = bge.par
+      am = bge.par,
+      dp_params = list(dp_iter = dp_iter,
+                       dp_fits = dp_fits,
+                       burnin = burnin,
+                       L = L)
     )
     
     # search spaces
