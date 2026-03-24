@@ -12,43 +12,42 @@ library(mclust)
 library(openxlsx)
 library(progressr)
 library(mvtnorm)
-library(doFuture)
 library(doRNG)
 
 source("dao.R")
 source("dualPC.R")
+source("Fourier_fns.R")
 source("fns.R")
 
 # --------------------------------------------------
 # Settings
 # --------------------------------------------------
 
-iter <- 30
-n <- 4
-shift_sizes <- c(1, 2, 3, 5, 10)
+init.seed <- 102
+iter <- 7
+dual <- TRUE
 
-N_samples <- c(100)
+n <- 10
+shift_sizes <- c(1)
+N_samples <- c(102)
+
 dp_fits <- 1
-dp_iter <- 60
-
-sample_windows <- list(
-  w10_20   = 10:20,
-  w20_30   = 20:30,
-  w30_40   = 30:40,
-  w40_50   = 40:50,
-  w50_60   = 50:60
-)
+dp_iter <- 400
+initial_clusters <- 10
+d <- 1
 
 alpha_grid <- list(
-  c(2, 4)
+  c(10, 5.3)
 )
 
 g0_grid <- list(
-  list(mu0 = rep(0, n), kappa0 = n, nu = n, Lambda = diag(n))
+  list(mu0 = rep(0, n), kappa0 = 1, nu = n, Lambda = diag(n))
 )
 
-
+# --------------------------------------------------
 # Hyperparameter grid
+# --------------------------------------------------
+
 param_grid <- expand.grid(
   alpha_id = seq_along(alpha_grid),
   g0_id = seq_along(g0_grid),
@@ -56,211 +55,55 @@ param_grid <- expand.grid(
   shift_size = shift_sizes
 )
 
-# Simulation grid = hyperparameter settings x replicate
 sim_grid <- expand.grid(
-  hp_id = seq_len(nrow(param_grid)),
-  sim_id = seq_len(iter)
+  j = seq_len(nrow(param_grid)),
+  i = seq_len(iter)
 )
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
 
-dp_membership_probs_iters <- function(dp, sample_iters) {
-  y <- dp$data
-  N <- dp$n
-  mdObj <- dp$mixingDistribution
+dp_nclusters_iters <- function(dp) {
+  weights_sample <- dp$weightsChain
   
-  clusterParams_sample <- dp$clusterParametersChain[sample_iters]
-  weightsChain_sample <- dp$weightsChain[sample_iters]
-  pointsPerCluster_sample <- lapply(weightsChain_sample, function(w) w * N)
-  
-  probs_list <- vector("list", length(sample_iters))
-  
-  for (l in seq_along(sample_iters)) {
-    clusterParams <- clusterParams_sample[[l]]
-    pointsPerCluster <- pointsPerCluster_sample[[l]]
-    numLabels <- length(pointsPerCluster)
-    
-    probs <- matrix(0, nrow = N, ncol = numLabels)
-    
-    for (i in seq_len(N)) {
-      rowp <- pointsPerCluster *
-        Likelihood(mdObj, y[i, , drop = FALSE], clusterParams)
-      
-      rowp[is.na(rowp)] <- 0
-      if (all(rowp == 0)) {
-        rowp <- rep_len(1, length(rowp))
-      }
-      
-      probs[i, ] <- rowp
-    }
-    
-    col_sums <- colSums(probs)
-    probs <- probs[, col_sums > 0, drop = FALSE]
-    probs_list[[l]] <- probs / rowSums(probs)
-  }
-  
-  names(probs_list) <- as.character(sample_iters)
-  probs_list
-}
-
-make_iter_window_map <- function(sample_windows) {
-  bind_rows(lapply(names(sample_windows), function(w) {
-    data.frame(
-      window = w,
-      sampled_iter = sample_windows[[w]]
-    )
-  }))
-}
-
-score_one_gamma <- function(Gamma_sample, truth) {
-  x1_mass <- colSums(Gamma_sample[truth == "X1", , drop = FALSE])
-  x2_mass <- colSums(Gamma_sample[truth == "X2", , drop = FALSE])
-  
-  cluster_owner <- ifelse(x1_mass >= x2_mass, "X1", "X2")
-  
-  same_mass <- numeric(nrow(Gamma_sample))
-  other_mass <- numeric(nrow(Gamma_sample))
-  
-  for (i in seq_len(nrow(Gamma_sample))) {
-    same_mass[i]  <- sum(Gamma_sample[i, cluster_owner == truth[i], drop = FALSE])
-    other_mass[i] <- sum(Gamma_sample[i, cluster_owner != truth[i], drop = FALSE])
-  }
-  
-  entropy <- -rowSums(Gamma_sample * log(pmax(Gamma_sample, 1e-12)))
-  entropy <- entropy / log(ncol(Gamma_sample))
-  hard_labels <- max.col(Gamma_sample, ties.method = "first")
+  n_clusters <- sapply(weights_sample, function(w) {
+    sum(w > 0)
+  })
   
   data.frame(
-    ari = adjustedRandIndex(hard_labels, truth),
-    nmi = aricode::NMI(hard_labels, truth),
-    same_mass = mean(same_mass),
-    other_mass = mean(other_mass),
-    entropy = mean(entropy),
-    score = mean(same_mass) - mean(other_mass)
+    iter = seq_along(n_clusters),
+    n_clusters = as.integer(n_clusters)
   )
 }
 
-summarise_hyperparam <- function(df_sim) {
-  data.frame(
-    n_sim = nrow(df_sim),
-    hp_mean_score = mean(df_sim$mean_score),
-    hp_sd_score = sd(df_sim$mean_score),
-    hp_mean_ari = mean(df_sim$mean_ari),
-    hp_sd_ari = sd(df_sim$mean_ari),
-    hp_mean_nmi = mean(df_sim$mean_nmi),
-    hp_sd_nmi = sd(df_sim$mean_nmi),
-    hp_mean_entropy = mean(df_sim$mean_entropy),
-    hp_mean_same_mass = mean(df_sim$mean_same_mass),
-    hp_mean_other_mass = mean(df_sim$mean_other_mass),
-    hp_best_score = max(df_sim$max_score),
-    hp_worst_score = min(df_sim$min_score)
-  )
+make_job_seed <- function(init.seed, k) {
+  init.seed + k
 }
 
-# --------------------------------------------------
-# One simulation
-# --------------------------------------------------
-run_one_simulation <- function(sim_id, alpha_prior, g0_prior,
-                               n, N, dp_fits, dp_iter,
-                               sample_windows, shift_size,
-                               job_seed) {
-  set.seed(job_seed)
-  
-  sample_iters <- sort(unique(unlist(sample_windows)))
-  iter_window_map <- make_iter_window_map(sample_windows)
-  
-  g <- er_dag(n)
-  g <- sf_out(g)
-  truegraph <- randomize_graph(g)
-  
-  model <- corr(truegraph)
-  data_simulation <- simulate_bimodal_for_tuning(model$B, model$O, n=N, bimodal_sep=shift_size)
-  data <- standardize(data_simulation$X)
-  colnames(data) <- paste0("v", seq_len(ncol(data)))
-  
-  truth <- ifelse(data_simulation$cluster == -1, "X1", "X2")
-  
-  gamma_scores_all <- vector("list", dp_fits * length(sample_iters))
-  gamma_counter <- 1
-  
-  for (f in seq_len(dp_fits)) {
-    dp <- DirichletProcessMvnormal(
-      data,
-      g0Priors = g0_prior,
-      alphaPriors = alpha_prior,
-      numInitialClusters = 10
-    )
-    
-    dp <- Fit(dp, dp_iter)
-    gamma_list <- dp_membership_probs_iters(dp, sample_iters)
-    
-    if (is.matrix(gamma_list)) {
-      gamma_list <- list(gamma_list)
-    }
-    
-    for (l in seq_along(gamma_list)) {
-      Gamma_sample <- gamma_list[[l]]
-      sc <- score_one_gamma(Gamma_sample, truth)
-      
-      gamma_scores_all[[gamma_counter]] <- data.frame(
-        sim = sim_id,
-        dp_fit = f,
-        gamma_id = l,
-        sampled_iter = sample_iters[l],
-        ari = sc$ari,
-        nmi = sc$nmi,
-        same_mass = sc$same_mass,
-        other_mass = sc$other_mass,
-        entropy = sc$entropy,
-        score = sc$score,
-        job_seed = job_seed
-      )
-      gamma_counter <- gamma_counter + 1
-    }
-  }
-  
-  gamma_scores_df <- bind_rows(gamma_scores_all) %>%
-    left_join(iter_window_map, by = "sampled_iter")
-  
-  sim_summary_by_window <- gamma_scores_df %>%
-    group_by(sim, window, job_seed) %>%
-    summarise(
-      n_gamma = n(),
-      mean_score = mean(score),
-      sd_score = sd(score),
-      min_score = min(score),
-      median_score = median(score),
-      max_score = max(score),
-      mean_ari = mean(ari),
-      mean_nmi = mean(nmi),
-      mean_same_mass = mean(same_mass),
-      mean_other_mass = mean(other_mass),
-      mean_entropy = mean(entropy),
-      .groups = "drop"
-    )
-  
-  list(
-    sim_summary_by_window = sim_summary_by_window,
-    gamma_scores = gamma_scores_df
+make_file_name <- function(alpha_id, g0_id, shift_size, N, i) {
+  paste0(
+    "Tuning/",
+    "alpha_id", alpha_id,
+    "_g0_id", g0_id,
+    "_shift_size", shift_size,
+    "_N", N,
+    "_rep", sprintf("%03d", i),
+    ".rds"
   )
 }
-
 
 # --------------------------------------------------
 # Parallel setup
 # --------------------------------------------------
-
 n_cores <- max(1, availableCores() - 1)
+
 plan(multisession, workers = n_cores)
 registerDoFuture()
-plan(multisession)
-
-set.seed(123)  # ensures reproducibility
+registerDoRNG(init.seed)
 
 handlers(global = TRUE)
-handlers("progress")
+handlers("txtprogressbar")
 
 # --------------------------------------------------
 # Parallel run
@@ -273,148 +116,154 @@ with_progress({
     k = seq_len(nrow(sim_grid)),
     .packages = c(
       "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
-      "aricode", "mclust", "mvtnorm", "doRNG"
+      "aricode", "mclust", "mvtnorm", "doRNG", "pcalg"
     )
-  ) %dorng% {
+  ) %dopar% {
     
     source("dao.R")
+    source("dualPC.R")
+    source("Fourier_fns.R")
     source("fns.R")
     insertSource("fns.R", package = "BiDAG")
     
-    hp_id <- sim_grid$hp_id[k]
-    sim_id <- sim_grid$sim_id[k]
+    # set params
+    j <- sim_grid$j[k]
+    i <- sim_grid$i[k]
     
-    alpha_id <- param_grid$alpha_id[hp_id]
-    g0_id <- param_grid$g0_id[hp_id]
-    N <- param_grid$N[hp_id]
-    shift_size <- param_grid$shift_size[hp_id]
+    alpha_id <- param_grid$alpha_id[j]
+    g0_id <- param_grid$g0_id[j]
+    N <- param_grid$N[j]
+    shift_size <- param_grid$shift_size[j]
     
     alpha_prior <- alpha_grid[[alpha_id]]
     g0_prior <- g0_grid[[g0_id]]
     
-    # ------------------------------------
-    # unique job seed
-    # ------------------------------------
-    
-    job_seed <- as.integer(
-      (as.numeric(Sys.time()) * 1000 + Sys.getpid() + k) %% .Machine$integer.max
-    )
-    
-    if (job_seed <= 0) job_seed <- k
-    
-    out <- run_one_simulation(
-      sim_id = sim_id,
-      alpha_prior = alpha_prior,
-      g0_prior = g0_prior,
-      n = n,
-      N = N,
-      dp_fits = dp_fits,
-      dp_iter = dp_iter,
-      sample_windows = sample_windows,
+    file_name <- make_file_name(
+      alpha_id = alpha_id,
+      g0_id = g0_id,
       shift_size = shift_size,
-      job_seed = job_seed
+      N = N,
+      i = i
     )
     
-    sim_summary <- out$sim_summary_by_window %>%
-      mutate(
-        hp_id = hp_id,
-        alpha_a = alpha_prior[1],
-        alpha_b = alpha_prior[2],
-        g0_id = g0_id,
-        kappa0 = g0_prior$kappa0,
-        nu = g0_prior$nu,
-        lambda_scale = g0_prior$Lambda[1, 1],
-        N = N,
-        n = n,
-        dp_iter = dp_iter,
-        shift_size = shift_size,
-        job_seed = job_seed
+    if (file.exists(file_name)) {
+      p(sprintf("skip %d", k))
+      return(NULL)
+    }
+    
+    job_seed <- make_job_seed(init.seed, k)
+    set.seed(job_seed)
+    
+    myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2)
+    trueDAG <- as(myDAG, "matrix")
+    truegraph <- 1 * (trueDAG != 0)
+    
+    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = TRUE)
+    
+    if (is.null(colnames(data))) {
+      colnames(data) <- paste0("v", seq_len(ncol(data)))
+    }
+    
+    iter_results <- data.frame()
+    
+    # full DP
+    for (f in seq_len(dp_fits)) {
+      dp <- DirichletProcessMvnormal(
+        data,
+        alphaPriors = alpha_prior,
+        numInitialClusters = initial_clusters
       )
+      dp <- Fit(dp, dp_iter, progressBar = FALSE)
+      
+      fit_results <- dp_nclusters_iters(dp)
+      fit_results$mode <- "full"
+      fit_results$dp_fit <- f
+      
+      iter_results <- bind_rows(iter_results, fit_results)
+    }
     
-    gamma_scores <- out$gamma_scores %>%
-      mutate(
-        hp_id = hp_id,
-        alpha_a = alpha_prior[1],
-        alpha_b = alpha_prior[2],
-        g0_id = g0_id,
-        kappa0 = g0_prior$kappa0,
-        nu = g0_prior$nu,
-        lambda_scale = g0_prior$Lambda[1, 1],
-        N = N,
-        n = n,
-        dp_iter = dp_iter,
-        shift_size = shift_size,
-        job_seed = job_seed
-      )
+    # dual DP
+    if (dual) {
+      alpha <- 0.05
+      cor_mat <- cor(data)
+      startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = TRUE)
+      
+      idx <- which(rowSums(startspace) > 0 | colSums(startspace) > 0)
+      nodes <- rownames(startspace)[idx]
+      
+      if (length(nodes) >= 2) {
+        for (f in seq_len(dp_fits)) {
+          dp <- DirichletProcessMvnormal(
+            data[, nodes, drop = FALSE],
+            alphaPriors = alpha_prior,
+            numInitialClusters = initial_clusters
+          )
+          dp <- Fit(dp, dp_iter, progressBar = FALSE)
+          
+          fit_results <- dp_nclusters_iters(dp)
+          fit_results$mode <- "dual"
+          fit_results$dp_fit <- f
+          
+          iter_results <- bind_rows(iter_results, fit_results)
+        }
+      }
+    }
     
-    result <- bind_rows(
-      sim_summary %>% mutate(result_type = "sim_summary"),
-      gamma_scores %>% mutate(result_type = "gamma_scores")
-    )
+    iter_results$alpha_id <- alpha_id
+    iter_results$g0_id <- g0_id
+    iter_results$shift_size <- shift_size
+    iter_results$N <- N
+    iter_results$rep <- i
     
-    # ------------------------------------
-    # unique filename
-    # ------------------------------------
+    saveRDS(iter_results, file_name)
     
-    uid <- paste0(
-      format(Sys.time(), "%Y%m%d_%H%M%S"),
-      "_pid", Sys.getpid(),
-      "_k", k,
-      "_seed", job_seed
-    )
-    
-    file_name <- paste0("Tuning/run_", uid, ".rds")
-    
-    saveRDS(result, file_name)
-    
-    p()
+    p(sprintf("done %d", k))
   }
 })
+
 plan(sequential)
 
 # --------------------------------------------------
 # load combined runs
 # --------------------------------------------------
-files <- list.files("Tuning", pattern = ".*\\.rds", full.names = TRUE)
-all_runs <- bind_rows(lapply(files, readRDS))
+
+files <- list.files("Tuning", pattern = "\\.rds$", full.names = TRUE)
+results <- bind_rows(lapply(files, readRDS))
 
 # --------------------------------------------------
-# Split outputs back apart
+# Summaries
 # --------------------------------------------------
 
-all_sim_results_df <- all_runs %>%
-  filter(result_type == "gamma_scores") %>%
-  select(-result_type)
-
-sim_level_summary_df <- all_runs %>%
-  filter(result_type == "sim_summary") %>%
-  select(-result_type)
-
-# Hyperparameter-level summary by window
-results <- sim_level_summary_df %>%
-  group_by(
-    window, N, shift_size, n
-  ) %>%
-  group_modify(~ summarise_hyperparam(.x)) %>%
-  ungroup() %>%
-  mutate(
-    from = as.numeric(sub("w(\\d+)_.*", "\\1", window)),
-    to   = as.numeric(sub(".*_(\\d+)", "\\1", window))
+summary_results <- results %>%
+  group_by(mode, N, shift_size, iter) %>%
+  summarise(
+    mean_clusters = mean(n_clusters, na.rm = TRUE),
+    sd_clusters = sd(n_clusters, na.rm = TRUE),
+    .groups = "drop"
   )
-
+label_df <- summary_results %>%
+  filter(iter %% 50 == 0) %>%
+  mutate(label = round(mean_clusters, 2))
 
 # --------------------------------------------------
 # Plot
 # --------------------------------------------------
-
-ggplot(results, aes(x = to, y = hp_mean_ari)) +
-  geom_point() +
+ggplot(summary_results, aes(x = iter, y = mean_clusters)) +
   geom_line() +
+  geom_point() +
   geom_errorbar(
-    aes(ymin = hp_mean_ari - hp_sd_ari,
-        ymax = hp_mean_ari + hp_sd_ari),
-    width = 5
+    aes(
+      ymin = mean_clusters - sd_clusters,
+      ymax = mean_clusters + sd_clusters
+    ),
+    width = 3
   ) +
-  coord_cartesian(ylim = c(0, 1)) +
-  facet_grid(shift_size ~ N, scales = "free_y") +
+  geom_text(
+    data = label_df,
+    aes(y = 5, label = label),
+    vjust = -0.5,
+    size = 3
+  ) +
+  ylim(c(0, 10)) +
+  facet_grid(N ~ mode) +
   theme_bw()
