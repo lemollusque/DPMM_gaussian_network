@@ -38,10 +38,9 @@ bge.par = 0.01
 
 
 # generate data
-g <- er_dag(n)
-g <- sf_out(g)
-g <- randomize_graph(g)
-truegraph = t(g)
+myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
+trueDAG <- as(myDAG, "matrix")
+truegraph <- 1*(trueDAG != 0)
 data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
 if (is.null(colnames(data))) {
   colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -79,5 +78,7 @@ dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
   membershipp_list = Gamma_list,
-  edgepf = 1
+  update=TRUE
 )
+
+score <- scoreparameters("usr", data, usrpar = dp_usrpar)
