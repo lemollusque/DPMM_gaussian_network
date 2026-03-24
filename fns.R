@@ -88,7 +88,8 @@ usrscoreparameters <- function(initparam,
                                              aw = NULL, 
                                              T0scale = NULL,
                                              edgepf = 1,
-                                             edgepmat = NULL
+                                             edgepmat = NULL,
+                                             update = FALSE
                                              )
                                        ) 
 {
@@ -192,6 +193,15 @@ usrscoreparameters <- function(initparam,
       ),
       scores = scoreparam_list
     )
+  }
+  if (usrpar$update) {
+    file_path = paste0(
+      "DP/dp_",
+      format(Sys.time(), "%Y%m%d_%H%M%S"),
+      "_pid", Sys.getpid(),
+      ".rds")
+    initparam$file_path <- file_path
+    saveRDS(initparam, file_path)
   }
   initparam
 }
@@ -472,6 +482,11 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
 set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
   startspace <- NULL
+
+  if(dual) {
+    cor_mat <- cor(data)
+    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+  }
     
   if(method == "DP") {
     # dirichlet params
