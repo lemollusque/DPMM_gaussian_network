@@ -123,7 +123,9 @@ usrscoreparameters <- function(initparam,
   else {
     initparam$logedgepmat <- log(usrpar$edgepmat)
   }
-  
+  if (is.null(usrpar$update)) {
+    initparam$update <- FALSE
+  }
   initparam$dp_iter <- usrpar$dp_iter
   initparam$dp_burnin <- usrpar$dp_burnin
   initparam$dp_n_sample <- usrpar$dp_n_sample
@@ -194,7 +196,7 @@ usrscoreparameters <- function(initparam,
       scores = scoreparam_list
     )
   }
-  if (usrpar$update) {
+  if (initparam$update) {
     file_path = paste0(
       "DP/dp_",
       format(Sys.time(), "%Y%m%d_%H%M%S"),
