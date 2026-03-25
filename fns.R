@@ -88,8 +88,7 @@ usrscoreparameters <- function(initparam,
                                              aw = NULL, 
                                              T0scale = NULL,
                                              edgepf = 1,
-                                             edgepmat = NULL,
-                                             update = FALSE
+                                             edgepmat = NULL
                                              )
                                        ) 
 {
@@ -123,9 +122,6 @@ usrscoreparameters <- function(initparam,
   else {
     initparam$logedgepmat <- log(usrpar$edgepmat)
   }
-  if (is.null(usrpar$update)) {
-    initparam$update <- FALSE
-  }
   initparam$dp_iter <- usrpar$dp_iter
   initparam$dp_burnin <- usrpar$dp_burnin
   initparam$dp_n_sample <- usrpar$dp_n_sample
@@ -156,7 +152,6 @@ usrscoreparameters <- function(initparam,
       constscorefact <- numeric(K)
       for (k in  1:K){
         weightvector = membershipp[,k]
-        cat("DP", d, "sample", l, "cluster", k, "Nk:", sum(weightvector), "\n")
         Nk[k] <- sum(weightvector)
         forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
         covmatk <- forcov$cov * Nk[k]
@@ -196,30 +191,27 @@ usrscoreparameters <- function(initparam,
       scores = scoreparam_list
     )
   }
-  if (initparam$update) {
-    file_path = paste0(
-      "DP/dp_",
-      format(Sys.time(), "%Y%m%d_%H%M%S"),
-      "_pid", Sys.getpid(),
-      ".rds")
-    initparam$file_path <- file_path
-    saveRDS(initparam, file_path)
-  }
   initparam
 }
 usrDAGcorescore <- function (j, parentnodes, n, param) {
-  cat("Calculating score for node", j, "with parents", parentnodes, "\n")
   # not depending on cluster param
   lp <- length(parentnodes)
-  
   # extract needed score parameters
   needed <- c(j, parentnodes)
+  matches <- Filter(function(e) setequal(param$labels[needed], e$meta$vars), param$dp_scoreparam_list)
+  if (length(matches) == 0) {
+    cat(j,"and ", paste0(parentnodes, collapse = ", "), "\n")
+    
+  }
+  if (length(matches) > 0) {
+    cat("following already exsits \n")
+    cat(param$labels[needed])
+  }
   dp_scoreparam_list = Filter(function(e) all((param$labels[needed] %in% e$meta$vars) & e$meta$active), 
                            param$dp_scoreparam_list)
   # put all score parameters needed in one list.
   scoreparam_list = unlist(lapply(dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
   n_score = length(scoreparam_list)
-  cat("Found", n_score, "score parameter sets for node", j, "\n")
   corescore_list  <- numeric(n_score)
   for (s in 1:n_score){
     scoreparam = scoreparam_list[[s]]
@@ -301,15 +293,7 @@ update_score_param_from_childparents <- function(param, child, parents) {
         dp <-  DirichletProcessGaussian(dp_data)
       }
       else{
-        n_col = ncol(dp_data)
-        g0Priors <- list(
-          mu0    = rep(0, n_col),
-          Lambda = diag(n_col) / param$T0scale,   # T = (1/t) I
-          kappa0 = param$am,
-          nu     = param$aw
-        )
-        
-        dp <-  DirichletProcessMvnormal(dp_data, g0Priors)
+        dp <-  DirichletProcessMvnormal(dp_data, numInitialClusters = 10)
       }
       dp <- Fit(dp, param$dp_iter)
       
