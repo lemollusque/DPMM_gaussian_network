@@ -20,17 +20,17 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 100
+iter <- 10
 dual <- TRUE
 
 # dirichlet params
-dp_iter <- 200
-dp_fits <- 2
-burnin <- 180
-L <- 10
+dp_iter <- 10
+dp_fits <- 1
+burnin <- 9
+L <- 2
 
 param_grid <- expand.grid(
-  N = c(600),
+  N = c(100),
   n = 10,
   d = c(0, 0.5, 1),
   bge.par = 0.01
@@ -122,15 +122,14 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_params = list(dp_iter = dp_iter,
-                       dp_fits = dp_fits,
-                       burnin = burnin,
-                       L = L)
+      dp_iter = dp_iter,
+      dp_burnin = burnin,
+      dp_n_sample = L
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace.fullspace(data, dual, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace.fullspace(data, dual, "bge", bge.par)
+    DP.searchspace <- set.searchspace(data, dual, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
     
     iter_results <- data.frame()
     

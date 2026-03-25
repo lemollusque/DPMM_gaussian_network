@@ -30,13 +30,12 @@ iter <- 100
 dual <- TRUE
 
 # dirichlet params
-dp_iter <- 200
-dp_fits <- 2
-burnin <- 180
+dp_iter <- 100
+burnin <- 90
 L <- 10
 
 param_grid <- expand.grid(
-  N = c(600),
+  N = c(1000),
   n = 10,
   d = c(0, 0.5, 1),
   bge.par = 0.01
