@@ -41,13 +41,12 @@ dp_membership_probs <- function(dp, burnin, L){
   }
   return(probs_list)
 }
-add_membershipp <- function(membershipp_list, membershipp, child, parents, active=T) {
+add_membershipp <- function(membershipp_list, membershipp, child, parents) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
     membershipp = membershipp,
     child = child, 
     parents = parents, 
-    vars = c(child, parents),
-    active = active
+    vars = c(child, parents)
   )
   membershipp_list
 }
@@ -185,8 +184,7 @@ usrscoreparameters <- function(initparam,
       meta = list(
         child   = dp_membershipp_list[[d]]$child,
         parents = dp_membershipp_list[[d]]$parents,
-        vars    = dp_membershipp_list[[d]]$vars,
-        active  = dp_membershipp_list[[d]]$active
+        vars    = dp_membershipp_list[[d]]$vars
       ),
       scores = scoreparam_list
     )
@@ -203,12 +201,10 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
     cat(j,"and ", paste0(parentnodes, collapse = ", "), "\n")
     
   }
-  if (length(matches) > 0) {
-    cat("following already exsits \n")
-    cat(param$labels[needed])
-  }
-  dp_scoreparam_list = Filter(function(e) all((param$labels[needed] %in% e$meta$vars) & e$meta$active), 
-                           param$dp_scoreparam_list)
+  dp_scoreparam_list <- Filter(function(e) 
+    all(param$labels[needed] %in% e$meta$vars), 
+    param$dp_scoreparam_list
+  )
   # put all score parameters needed in one list.
   scoreparam_list = unlist(lapply(dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
   n_score = length(scoreparam_list)
@@ -495,12 +491,10 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
       dp <- Fit(dp, dp_iter)
 
       Gamma_sample <- dp_membership_probs(dp, burnin, L)
-      # add meta data in list
       Gamma_list <- add_membershipp(Gamma_list, 
                                     Gamma_sample, 
-                                    child=child, 
-                                    parents=parents, 
-                                    active=FALSE)
+                                    child   = colnames(data)[child],
+                                    parents = colnames(data)[parents])
     }
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
@@ -534,15 +528,14 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
     Gamma_list <- list()
       dp <- DirichletProcessMvnormal(data, 
                                      numInitialClusters = 10)
-      dp <- Fit(dp, dp_iter, progressBar = FALSE)
+      dp <- Fit(dp, dp_iter)
       
       Gamma_sample <- dp_membership_probs(dp, burnin, L)
       Gamma_list <- add_membershipp(
         Gamma_list,
         Gamma_sample,
         child = colnames(data)[1],
-        parents = colnames(data),
-        active = TRUE
+        parents = colnames(data)
       )
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
