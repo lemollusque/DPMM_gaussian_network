@@ -343,6 +343,10 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
 
     # prepare dirichlet gamma list
     Gamma_list <- list()
+    Gamma_list <- add_membershipp(Gamma_list, 
+                                  list(matrix(1, nrow = nrow(data), ncol = 1)), 
+                                  child   = colnames(data)[1],
+                                  parents = colnames(data)[2:ncol(data)])
     for (i in seq_along(needed_sets)) {
       child = needed_sets[[i]]$child
       parents = needed_sets[[i]]$parents
