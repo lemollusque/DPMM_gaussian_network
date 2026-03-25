@@ -50,30 +50,6 @@ alpha = 0.05
 cor_mat <- cor(data)
 startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
 
-
-needed_score_sets <- function(startspace) {
-  p <- ncol(startspace)
-  out <- list()
-  
-  for (j in seq_len(p)) {
-    base <- which(startspace[, j] == 1)
-    extra <- setdiff(seq_len(p), c(j, base))
-
-    out[[length(out) + 1]] <- list(
-      child = j,
-      parents = base
-    )
-    
-    for (e in extra) {
-      out[[length(out) + 1]] <- list(
-        child = j,
-        parents = sort(c(base, e))
-      )
-    }
-  }
-  out
-}
-
 needed_sets = needed_score_sets(startspace)
 
 for (i in seq_along(needed_sets)) {
@@ -96,13 +72,16 @@ for (i in seq_along(needed_sets)) {
                                 parents=parents, 
                                 active=FALSE)
 }
+
 dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
   dp_iter = dp_iter,
   dp_burnin = burnin,
-  dp_n_sample = L
+  dp_n_sample = L,
+  membershipp_list = Gamma_list
 )
+
 score <- scoreparameters("usr", data, usrpar = dp_usrpar)
 searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
                              verbose = F, scoreout = TRUE, alphainit = 0.01)
