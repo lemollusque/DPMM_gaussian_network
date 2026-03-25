@@ -20,19 +20,18 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 100
+iter <- 10
 dual <- TRUE
 
 # dirichlet params
 alpha_prior <- c(2, 4)
 initial_clusters <- 10
-dp_iter <- 200
-dp_fits <- 2
-burnin <- 190
-L <- 10
+dp_iter <- 10
+burnin <- 9
+L <- 1
 
 N = 100
-n = 4
+n = 10
 d = 1
 bge.par = 0.01
 
@@ -51,34 +50,60 @@ alpha = 0.05
 cor_mat <- cor(data)
 startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
 
-# Find nodes with any incoming OR outgoing edges
-idx <- which(rowSums(startspace) > 0 | colSums(startspace) > 0)
-# Get node names
-nodes <- rownames(startspace)[idx]
 
-# prepare dirichlet gamma list
-Gamma_list <- list()
-for (f in seq_len(dp_fits)) {
-  dp <- DirichletProcessMvnormal(data[, nodes], 
-                                 alphaPriors = alpha_prior,
-                                 numInitialClusters = initial_clusters)
-  dp <- Fit(dp, dp_iter, progressBar = TRUE)
+needed_score_sets <- function(startspace) {
+  p <- ncol(startspace)
+  out <- list()
   
-  Gamma_sample <- dp_membership_probs(dp, burnin, L)
-  Gamma_list <- add_membershipp(
-    Gamma_list,
-    Gamma_sample,
-    child = colnames(data)[1],
-    parents = colnames(data)[2:ncol(data)],
-    active = TRUE
-  )
+  for (j in seq_len(p)) {
+    base <- which(startspace[, j] == 1)
+    extra <- setdiff(seq_len(p), c(j, base))
+
+    out[[length(out) + 1]] <- list(
+      child = j,
+      parents = base
+    )
+    
+    for (e in extra) {
+      out[[length(out) + 1]] <- list(
+        child = j,
+        parents = sort(c(base, e))
+      )
+    }
+  }
+  out
 }
 
+needed_sets = needed_score_sets(startspace)
+
+for (i in seq_along(needed_sets)) {
+  child = needed_sets[[i]]$child
+  parents = needed_sets[[i]]$parents
+  dp_data = data[,c(child, parents)]
+  if (length(parents) == 0){
+    dp <-  DirichletProcessGaussian(dp_data)
+  }
+  else{
+    dp <-  DirichletProcessMvnormal(dp_data, numInitialClusters = 10)
+  }
+  dp <- Fit(dp, dp_iter)
+  
+  Gamma_sample <- dp_membership_probs(dp, burnin, L)
+  # add meta data in list
+  Gamma_list <- add_membershipp(Gamma_list, 
+                                Gamma_sample, 
+                                child=child, 
+                                parents=parents, 
+                                active=FALSE)
+}
 dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
-  membershipp_list = Gamma_list,
-  update=TRUE
+  dp_iter = dp_iter,
+  dp_burnin = burnin,
+  dp_n_sample = L
 )
-
 score <- scoreparameters("usr", data, usrpar = dp_usrpar)
+searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
+                             verbose = F, scoreout = TRUE, alphainit = 0.01)
+
