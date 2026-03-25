@@ -127,15 +127,14 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_params = list(dp_iter = dp_iter,
-                       dp_fits = dp_fits,
-                       burnin = burnin,
-                       L = L)
+      dp_iter = dp_iter,
+      dp_burnin = burnin,
+      dp_n_sample = L
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace.fullspace(data, dual, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace.fullspace(data, dual, "bge", bge.par)
+    DP.searchspace <- set.searchspace(data, dual, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
     
     iter_results <- data.frame()
     
