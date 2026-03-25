@@ -394,17 +394,17 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
     L <- usrpar$dp_n_sample
     # prepare dirichlet gamma list
     Gamma_list <- list()
-      dp <- DirichletProcessMvnormal(data, 
-                                     numInitialClusters = 10)
-      dp <- Fit(dp, dp_iter)
-      
-      Gamma_sample <- dp_membership_probs(dp, burnin, L)
-      Gamma_list <- add_membershipp(
-        Gamma_list,
-        Gamma_sample,
-        child = colnames(data)[1],
-        parents = colnames(data)
-      )
+    dp <- DirichletProcessMvnormal(data, 
+                                    numInitialClusters = 10)
+    dp <- Fit(dp, dp_iter)
+    
+    Gamma_sample <- dp_membership_probs(dp, burnin, L)
+    Gamma_list <- add_membershipp(
+      Gamma_list,
+      Gamma_sample,
+      child = colnames(data)[1],
+      parents = colnames(data)
+    )
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
   }

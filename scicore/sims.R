@@ -29,13 +29,12 @@ init.seed <- 100
 iter <- 100
 dual <- TRUE
 
-# dirichlet params
-dp_iter <- 100
-burnin <- 90
-L <- 10
+dp_iter <- 1000
+burnin <- 800
+L <- 50
 
 param_grid <- expand.grid(
-  N = c(1000),
+  N = c(400),
   n = 10,
   d = c(0, 0.5, 1),
   bge.par = 0.01
@@ -133,8 +132,8 @@ with_progress({
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace(data, dual, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
+    DP.searchspace <- set.searchspace.fullspace(data, dual, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace.fullspace(data, dual, "bge", bge.par)
     
     iter_results <- data.frame()
     
