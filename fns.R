@@ -387,6 +387,28 @@ update_score_param_from_space <- function(param, space){
   param$dp_scoreparam_list <- append(param$dp_scoreparam_list, new_score$dp_scoreparam_list)
   param
 }
+needed_score_sets <- function(startspace) {
+  p <- ncol(startspace)
+  out <- list()
+  
+  for (j in seq_len(p)) {
+    base <- which(startspace[, j] == 1)
+    extra <- setdiff(seq_len(p), c(j, base))
+
+    out[[length(out) + 1]] <- list(
+      child = j,
+      parents = base
+    )
+    
+    for (e in extra) {
+      out[[length(out) + 1]] <- list(
+        child = j,
+        parents = sort(c(base, e))
+      )
+    }
+  }
+  out
+}
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
                                        dags, 
@@ -452,6 +474,35 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
   }
   
   if(method == "DP") {
+    # dirichlet params
+    dp_iter <- usrpar$dp_iter
+    burnin <- usrpar$dp_burnin
+    L <- usrpar$dp_n_sample
+    
+    needed_sets = needed_score_sets(startspace)
+
+    # prepare dirichlet gamma list
+    Gamma_list <- list()
+    for (i in seq_along(needed_sets)) {
+      child = needed_sets[[i]]$child
+      parents = needed_sets[[i]]$parents
+      dp_data = data[,c(child, parents), drop = FALSE]
+      if (length(parents) == 0){
+        dp <-  DirichletProcessGaussian(dp_data)
+      } else {
+        dp <-  DirichletProcessMvnormal(dp_data, numInitialClusters = 10)
+      }
+      dp <- Fit(dp, dp_iter)
+
+      Gamma_sample <- dp_membership_probs(dp, burnin, L)
+      # add meta data in list
+      Gamma_list <- add_membershipp(Gamma_list, 
+                                    Gamma_sample, 
+                                    child=child, 
+                                    parents=parents, 
+                                    active=FALSE)
+    }
+    usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
   }
   
