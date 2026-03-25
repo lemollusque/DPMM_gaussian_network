@@ -492,13 +492,11 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
     
   if(method == "DP") {
     # dirichlet params
-    dp_iter <- usrpar$dp_params$dp_iter
-    dp_fits <- usrpar$dp_params$dp_fits
-    burnin <- usrpar$dp_params$burnin
-    L <- usrpar$dp_params$L
+    dp_iter <- usrpar$dp_iter
+    burnin <- usrpar$dp_burnin
+    L <- usrpar$dp_n_sample
     # prepare dirichlet gamma list
     Gamma_list <- list()
-    for (f in seq_len(dp_fits)) {
       dp <- DirichletProcessMvnormal(data, 
                                      numInitialClusters = 10)
       dp <- Fit(dp, dp_iter, progressBar = FALSE)
@@ -511,34 +509,6 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
         parents = colnames(data),
         active = TRUE
       )
-    } 
-    
-    if(dual) {
-      # start searchspace
-      alpha = 0.05
-      cor_mat <- cor(data)
-      startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
-      
-      # Find nodes with any incoming OR outgoing edges
-      idx <- which(rowSums(startspace) > 0 | colSums(startspace) > 0)
-      # Get node names
-      nodes <- rownames(startspace)[idx]
-      
-      for (f in seq_len(dp_fits)) {
-        dp <- DirichletProcessMvnormal(data[, nodes, drop = FALSE],
-                                       numInitialClusters = 10)
-        dp <- Fit(dp, dp_iter, progressBar = FALSE)
-        
-        Gamma_sample <- dp_membership_probs(dp, burnin, L)
-        Gamma_list <- add_membershipp(
-          Gamma_list,
-          Gamma_sample,
-          child = colnames(data[, nodes])[1],
-          parents = colnames(data[, nodes]),
-          active = TRUE
-        )
-      }
-    }
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
   }
@@ -546,10 +516,8 @@ set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05,
   if(method == "bge") {
     score <- scoreparameters("bge", data, bgepar = list(am = par))
   }
-  startspace <- matrix(1, ncol(data), ncol(data), 
-                      dimnames=list(colnames(data), colnames(data)))
-  diag(startspace) <- 0
-  searchspace = list(scoretable = NULL, DAG = NULL, maxorder = NULL, endspace = startspace)
+  searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
+                               verbose = F, scoreout = TRUE, alphainit = 0.01)
   time <- Sys.time() - start
   
   list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
