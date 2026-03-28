@@ -72,5 +72,5 @@ data <- Fou_nldata(truegraph, N, lambda = 10, noise.sd = 1, standardize = T, con
 plot_simulated_data(data, "Fourier data")
 
 # bimodal fourier
-data <- simulate_bimodal_fourier(truegraph, N, bimodal_sep = 2, lambda = 1, noise.sd = 1, concentration = 1)
+data <- simulate_bimodal_fourier(truegraph, n=N, bimodal_sep = 2, lambda = 1, noise.sd = 1, concentration = 1)
 plot_simulated_data(data, "Bimodal Fourier data")
