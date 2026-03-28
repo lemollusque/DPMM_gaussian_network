@@ -63,6 +63,14 @@ plot_simulated_data(data, "Bimodal data")
 data <- simulate_bimodal_one_node(t(truegraph), n=N, bimodal_sep=2)
 plot_simulated_data(data, "One node Bimodal data")
 
+# student data
+data <- simulate_bimodal_student(t(truegraph), n=N, bimodal_sep=10, df=3)
+plot_simulated_data(data, "Bimodal Student data")
+
 # fourier data
-data <- Fou_nldata(truegraph, N, lambda = 1, noise.sd = 1, standardize = T, concentration = 1)
+data <- Fou_nldata(truegraph, N, lambda = 10, noise.sd = 1, standardize = T, concentration = 0.1)
 plot_simulated_data(data, "Fourier data")
+
+# bimodal fourier
+data <- simulate_bimodal_fourier(truegraph, N, bimodal_sep = 2, lambda = 1, noise.sd = 1, concentration = 1)
+plot_simulated_data(data, "Bimodal Fourier data")
