@@ -305,84 +305,35 @@ test_compare_dp_vs_bge <- function(usr_score_param,
 set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
   startspace <- NULL
-  
+
   if(dual) {
     cor_mat <- cor(data)
     startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
   }
-  
+    
   if(method == "DP") {
     # dirichlet params
     dp_iter <- usrpar$dp_iter
     burnin <- usrpar$dp_burnin
     L <- usrpar$dp_n_sample
-    
-    needed_sets = needed_score_sets(startspace)
-
+    dp_fits <- usrpar$dp_fits
+    n = ncol(data)
     # prepare dirichlet gamma list
     Gamma_list <- list()
-    Gamma_list <- add_membershipp(Gamma_list, 
-                                  list(matrix(1, nrow = nrow(data), ncol = 1)), 
-                                  child   = colnames(data)[1],
-                                  parents = colnames(data)[2:ncol(data)])
-    for (i in seq_along(needed_sets)) {
-      child = needed_sets[[i]]$child
-      parents = needed_sets[[i]]$parents
-      dp_data = data[,c(child, parents), drop = FALSE]
-      if (length(parents) == 0){
-        dp <-  DirichletProcessGaussian(dp_data)
-      } else {
-        dp <-  DirichletProcessMvnormal(dp_data, numInitialClusters = 10)
-      }
+    for (f in seq_len(dp_fits)) {
+      dp <- DirichletProcessMvnormal(data,       
+                                      g0Priors = list(mu0 = rep(0, n), kappa0 = 1, nu = n, Lambda = diag(n)/(n)),
+                                      numInitialClusters = nrow(data))
       dp <- Fit(dp, dp_iter)
-
+      
       Gamma_sample <- dp_membership_probs(dp, burnin, L)
-      Gamma_list <- add_membershipp(Gamma_list, 
-                                    Gamma_sample, 
-                                    child   = colnames(data)[child],
-                                    parents = colnames(data)[parents])
+      Gamma_list <- add_membershipp(
+        Gamma_list,
+        Gamma_sample,
+        child = colnames(data)[1],
+        parents = colnames(data)
+      )
     }
-    usrpar$membershipp_list = Gamma_list
-    score <- scoreparameters("usr", data, usrpar = usrpar)
-  }
-  
-  if(method == "bge") {
-    score <- scoreparameters("bge", data, bgepar = list(am = par))
-  }
-  searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
-                               verbose = F, scoreout = TRUE, alphainit = 0.01)
-  time <- Sys.time() - start
-  
-  list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
-       maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time)
-}
-set.searchspace.fullspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
-  start <- Sys.time()
-  startspace <- NULL
-
-  if(dual) {
-    cor_mat <- cor(data)
-    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
-  }
-    
-  if(method == "DP") {
-    # dirichlet params
-    dp_iter <- usrpar$dp_iter
-    burnin <- usrpar$dp_burnin
-    L <- usrpar$dp_n_sample
-    # prepare dirichlet gamma list
-    Gamma_list <- list()
-    dp <- DirichletProcessMvnormal(data, 
-                                    numInitialClusters = 10)
-    dp <- Fit(dp, dp_iter)
-    
-    Gamma_sample <- dp_membership_probs(dp, burnin, L)
-    Gamma_list <- add_membershipp(
-      Gamma_list,
-      Gamma_sample,
-      child = colnames(data)[1],
-      parents = colnames(data)
-    )
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
   }
