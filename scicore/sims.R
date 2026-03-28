@@ -29,14 +29,16 @@ init.seed <- 100
 iter <- 100
 dual <- TRUE
 
+# dirichlet params
 dp_iter <- 1000
 burnin <- 800
 L <- 50
+dp_fits <- 2
 
 param_grid <- expand.grid(
-  N = c(400),
+  N = c(100, 200, 500, 1000),
   n = 10,
-  d = c(0, 0.5, 1),
+  d = c(0, 1, 2, 5, 10),
   bge.par = 0.01
 )
 
@@ -115,8 +117,8 @@ with_progress({
     myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1*(trueDAG != 0)
-    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
-
+    data <- simulate_bimodal(truegraph, n=N, bimodal_sep=d)
+    
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
@@ -128,12 +130,13 @@ with_progress({
       am = bge.par,
       dp_iter = dp_iter,
       dp_burnin = burnin,
-      dp_n_sample = L
+      dp_n_sample = L,
+      dp_fits = dp_fits
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace.fullspace(data, dual, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace.fullspace(data, dual, "bge", bge.par)
+    DP.searchspace <- set.searchspace(data, dual, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
     
     iter_results <- data.frame()
     
