@@ -50,28 +50,6 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents) {
   )
   membershipp_list
 }
-needed_score_sets <- function(startspace) {
-  p <- ncol(startspace)
-  out <- list()
-  
-  for (j in seq_len(p)) {
-    base <- which(startspace[, j] == 1)
-    extra <- setdiff(seq_len(p), c(j, base))
-
-    out[[length(out) + 1]] <- list(
-      child = j,
-      parents = base
-    )
-    
-    for (e in extra) {
-      out[[length(out) + 1]] <- list(
-        child = j,
-        parents = sort(c(base, e))
-      )
-    }
-  }
-  out
-}
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
