@@ -111,7 +111,7 @@ with_progress({
     myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1*(trueDAG != 0)
-    data <- simulate_bimodal(truegraph, n=N, bimodal_sep=d)
+    data <- simulate_bimodal(t(truegraph), n=N, bimodal_sep=d)
     
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
