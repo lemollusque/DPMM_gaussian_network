@@ -21,8 +21,8 @@ insertSource("fns.R", package = "BiDAG")
 
 set.seed(1)
 
-N = 1000
-n = 4
+N = 100
+n = 10
 
 
 plot_simulated_data <- function(data, title){
@@ -65,5 +65,5 @@ data <- simulate_bimodal_one_node(g, n=N, bimodal_sep=2)
 plot_simulated_data(data, "One node Bimodal data")
 
 # fourier data
-data <- Fou_nldata(truegraph, N, lambda = 1, noise.sd = 1, standardize = T)
+data <- Fou_nldata(truegraph, N, lambda = 1, noise.sd = 1, standardize = T, concentration = 1)
 plot_simulated_data(data, "Fourier data")
