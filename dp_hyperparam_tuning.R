@@ -23,25 +23,23 @@ source("fns.R")
 # Settings
 # --------------------------------------------------
 
-init.seed <- 102
-iter <- 7
+init.seed <- 100
+iter <- 100
 dual <- TRUE
 
 n <- 10
-shift_sizes <- c(1)
-N_samples <- c(102)
+shift_sizes <- c(10)
+N_samples <- c(100)
 
 dp_fits <- 1
-dp_iter <- 400
-initial_clusters <- 10
-d <- 1
+dp_iter <- 100
 
 alpha_grid <- list(
-  c(10, 5.3)
+  c(2,4)
 )
 
 g0_grid <- list(
-  list(mu0 = rep(0, n), kappa0 = 1, nu = n, Lambda = diag(n))
+  list(mu0 = rep(0, n), kappa0 = 1, nu = n, Lambda = diag(n)/(n))
 )
 
 # --------------------------------------------------
@@ -64,16 +62,19 @@ sim_grid <- expand.grid(
 # Helpers
 # --------------------------------------------------
 
-dp_nclusters_iters <- function(dp) {
+dp_nclusters_iters <- function(dp, step = 25) {
   weights_sample <- dp$weightsChain
   
   n_clusters <- sapply(weights_sample, function(w) {
     sum(w > 0)
   })
   
+  iters <- seq_along(n_clusters)
+  keep <- iters %% step == 0 | iters == 1
+  
   data.frame(
-    iter = seq_along(n_clusters),
-    n_clusters = as.integer(n_clusters)
+    iter = iters[keep],
+    n_clusters = as.integer(n_clusters[keep])
   )
 }
 
@@ -81,11 +82,11 @@ make_job_seed <- function(init.seed, k) {
   init.seed + k
 }
 
-make_file_name <- function(alpha_id, g0_id, shift_size, N, i) {
+make_file_name <- function(alpha_id, kappa, lambda_coef, shift_size, N, i) {
   paste0(
     "Tuning/",
     "alpha_id", alpha_id,
-    "_g0_id", g0_id,
+    "_g0_id", kappa,"_", lambda_coef,
     "_shift_size", shift_size,
     "_N", N,
     "_rep", sprintf("%03d", i),
@@ -132,15 +133,20 @@ with_progress({
     
     alpha_id <- param_grid$alpha_id[j]
     g0_id <- param_grid$g0_id[j]
+    
     N <- param_grid$N[j]
     shift_size <- param_grid$shift_size[j]
     
     alpha_prior <- alpha_grid[[alpha_id]]
+    alpha = alpha_prior[[1]]/alpha_prior[[2]]
     g0_prior <- g0_grid[[g0_id]]
+    kappa = g0_prior$kappa0
+    lambda_coef = g0_prior$Lambda[1,1]
     
     file_name <- make_file_name(
-      alpha_id = alpha_id,
-      g0_id = g0_id,
+      alpha_id = alpha,
+      kappa = kappa,
+      lambda_coef = lambda_coef,
       shift_size = shift_size,
       N = N,
       i = i
@@ -154,11 +160,11 @@ with_progress({
     job_seed <- make_job_seed(init.seed, k)
     set.seed(job_seed)
     
-    myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2)
+    myDAG <- pcalg::randomDAG(n, prob = 0.6, lB = 1, uB = 2)
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1 * (trueDAG != 0)
     
-    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = TRUE)
+    data <- simulate_bimodal(truegraph, n=N, bimodal_sep=shift_size)
     
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -170,47 +176,20 @@ with_progress({
     for (f in seq_len(dp_fits)) {
       dp <- DirichletProcessMvnormal(
         data,
+        g0Priors = g0_prior,
         alphaPriors = alpha_prior,
-        numInitialClusters = initial_clusters
+        numInitialClusters = nrow(data)
       )
       dp <- Fit(dp, dp_iter, progressBar = FALSE)
       
       fit_results <- dp_nclusters_iters(dp)
-      fit_results$mode <- "full"
       fit_results$dp_fit <- f
       
       iter_results <- bind_rows(iter_results, fit_results)
     }
-    
-    # dual DP
-    if (dual) {
-      alpha <- 0.05
-      cor_mat <- cor(data)
-      startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = TRUE)
-      
-      idx <- which(rowSums(startspace) > 0 | colSums(startspace) > 0)
-      nodes <- rownames(startspace)[idx]
-      
-      if (length(nodes) >= 2) {
-        for (f in seq_len(dp_fits)) {
-          dp <- DirichletProcessMvnormal(
-            data[, nodes, drop = FALSE],
-            alphaPriors = alpha_prior,
-            numInitialClusters = initial_clusters
-          )
-          dp <- Fit(dp, dp_iter, progressBar = FALSE)
-          
-          fit_results <- dp_nclusters_iters(dp)
-          fit_results$mode <- "dual"
-          fit_results$dp_fit <- f
-          
-          iter_results <- bind_rows(iter_results, fit_results)
-        }
-      }
-    }
-    
-    iter_results$alpha_id <- alpha_id
-    iter_results$g0_id <- g0_id
+    iter_results$alpha <- alpha
+    iter_results$kappa <- kappa
+    iter_results$lambda_coef <- lambda_coef
     iter_results$shift_size <- shift_size
     iter_results$N <- N
     iter_results$rep <- i
@@ -235,12 +214,15 @@ results <- bind_rows(lapply(files, readRDS))
 # --------------------------------------------------
 
 summary_results <- results %>%
-  group_by(mode, N, shift_size, iter) %>%
+  group_by(alpha, kappa, lambda_coef, N, shift_size, iter) %>%
   summarise(
     mean_clusters = mean(n_clusters, na.rm = TRUE),
+    max_clusters = max(n_clusters, na.rm = TRUE),
     sd_clusters = sd(n_clusters, na.rm = TRUE),
     .groups = "drop"
-  )
+  ) %>%
+  mutate(kappa_lambda = paste0("k=", kappa, ", T=", lambda_coef))
+
 label_df <- summary_results %>%
   filter(iter %% 50 == 0) %>%
   mutate(label = round(mean_clusters, 2))
@@ -248,22 +230,23 @@ label_df <- summary_results %>%
 # --------------------------------------------------
 # Plot
 # --------------------------------------------------
-ggplot(summary_results, aes(x = iter, y = mean_clusters)) +
-  geom_line() +
-  geom_point() +
-  geom_errorbar(
-    aes(
-      ymin = mean_clusters - sd_clusters,
-      ymax = mean_clusters + sd_clusters
-    ),
-    width = 3
+
+ggplot() +
+  geom_point(
+    data = results,
+    aes(x = iter, y = n_clusters),
+    alpha = 0.4
+  ) +
+  geom_line(
+    data = summary_results,
+    aes(x = iter, y = mean_clusters, group = 1),
+    linewidth = 1
   ) +
   geom_text(
     data = label_df,
-    aes(y = 5, label = label),
+    aes(x = iter, y = mean_clusters, label = label),
     vjust = -0.5,
     size = 3
-  ) +
-  ylim(c(0, 10)) +
-  facet_grid(N ~ mode) +
+  )+
+  facet_grid(kappa_lambda ~ alpha) +
   theme_bw()
