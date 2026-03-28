@@ -48,20 +48,19 @@ plot_simulated_data <- function(data, title){
 }
 
 # generate graph
-g <- er_dag(n)
-g <- sf_out(g)
-g <- randomize_graph(g)
+myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
+trueDAG <- as(myDAG, "matrix")
+truegraph <- 1 * (trueDAG != 0)
 
-truegraph <- t(g)
 for(row in 1:ncol(truegraph)){
   cat(truegraph[row,], "\n")
 }
 # run bimodal data
-data <- simulate_bimodal(g, n=N, bimodal_sep=2)
+data <- simulate_bimodal(t(truegraph), n=N, bimodal_sep=2)
 plot_simulated_data(data, "Bimodal data")
 
 # run bimodal on single node data
-data <- simulate_bimodal_one_node(g, n=N, bimodal_sep=2)
+data <- simulate_bimodal_one_node(t(truegraph), n=N, bimodal_sep=2)
 plot_simulated_data(data, "One node Bimodal data")
 
 # fourier data

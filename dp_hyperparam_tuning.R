@@ -160,7 +160,7 @@ with_progress({
     job_seed <- make_job_seed(init.seed, k)
     set.seed(job_seed)
     
-    myDAG <- pcalg::randomDAG(n, prob = 0.6, lB = 1, uB = 2)
+    myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1 * (trueDAG != 0)
     
