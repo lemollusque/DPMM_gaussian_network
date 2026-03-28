@@ -481,67 +481,6 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2) {
   }
   return(X)  
 }
-bimodal_err_for_tuning <- function(n, var, sep_sd=2) {
-  sd0 <- sqrt(var)
-  shift <- sep_sd * sd0
-  comp <- sample(c(-1, 1), size=n, replace=TRUE)
-  be <- rnorm(n, mean=comp * shift, sd=sd0)
-  return(list(cluster=comp, bimodal_e=be))
-}
-
-simulate_bimodal_for_tuning <- function(B, O, n, err=NULL, bimodal_sep=2) {
-  # Randomly simulates data.
-  # B = (lower triangular) beta matrix
-  # O = (diagonal entries) error matrix
-  # n = sample size
-  # err = additive error distribution
-  
-  # p = |variables|
-  p <- ncol(B)
-  
-  # reorder B and O
-  ord <- sofic_order(B)
-  B <- B[ord, ord]
-  O <- O[ord]
-  
-  # set default additive error as normal
-  if (is.null(err)) {
-    err <- function(n, var) rnorm(n, 0, sqrt(var))
-  }
-
-  # source nodes with at least one child
-  source_parents_ord <- which(rowSums(B != 0) == 0 & colSums(B != 0) > 0)
-  
-  if (length(source_parents_ord) == 0) {
-    stop("No source parent node found.")
-  }
-  # choose one random source parent in reordered coordinates
-  chosen_ord <- sample(source_parents_ord, 1)
-  
-  # simulate data
-  X <- matrix(0, n, p)
-  for (i in 1 : p) {
-    
-    # linear effect
-    for (j in which(B[i,] != 0)) {
-      X[, i] <- X[, i] + B[i, j] * X[, j]
-    }
-    
-    # additive error
-    # additive error
-    if (i == chosen_ord) {
-      bimodal_error_data <- bimodal_err_for_tuning(n, O[i], sep_sd=bimodal_sep)
-      X[, i] <- X[, i] + bimodal_error_data$bimodal_e
-    } else {
-      X[, i] <- X[, i] + err(n, O[i])
-    }
-  }
-  # reorder X
-  ord <- invert_order(ord)
-  X <- X[, ord]
-  
-  return(list(X=X, cluster=bimodal_error_data$cluster))  
-}
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Sample DAGs with BiDAG
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
