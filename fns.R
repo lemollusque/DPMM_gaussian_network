@@ -398,7 +398,7 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
 ## Generate data
 ## 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-simulate_bimodal_fourier <- function(dag, n, bimodal_sep = 2, lambda = lambda, noise.sd = 1, concentration = 0.1) {
+simulate_bimodal_fourier <- function(dag, n, bimodal_sep = 2, lambda = lambda, noise.sd = 1, concentration = 1) {
   n1 <- sample(1:(n - 1), 1)
   n2 <- n - n1
   
