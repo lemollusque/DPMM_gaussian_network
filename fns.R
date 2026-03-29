@@ -170,7 +170,7 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   lp <- length(parentnodes)
   # extract needed score parameters
   needed <- c(j, parentnodes)
-  
+
   dp_scoreparam_list <- Filter(function(e) 
     all(param$labels[needed] %in% e$meta$vars), 
     param$dp_scoreparam_list
@@ -321,7 +321,7 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
                                       alphaPriors = c(2,4),
                                       g0Priors = list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5),
                                       numInitialClusters = min(20, ceiling(sqrt(nrow(data)))))
-      dp <- Fit(dp, dp_iter)
+      dp <- Fit(dp, dp_iter, progressBar = FALSE)
       
       Gamma_sample <- dp_membership_probs(dp, burnin, L)
       Gamma_list <- add_membershipp(
