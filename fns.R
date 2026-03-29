@@ -170,11 +170,7 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   lp <- length(parentnodes)
   # extract needed score parameters
   needed <- c(j, parentnodes)
-  matches <- Filter(function(e) setequal(param$labels[needed], e$meta$vars), param$dp_scoreparam_list)
-  if (length(matches) == 0) {
-    cat(j,"and ", paste0(parentnodes, collapse = ", "), "\n")
-    
-  }
+  
   dp_scoreparam_list <- Filter(function(e) 
     all(param$labels[needed] %in% e$meta$vars), 
     param$dp_scoreparam_list
