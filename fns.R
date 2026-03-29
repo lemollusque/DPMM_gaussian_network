@@ -318,7 +318,7 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
       dp <- DirichletProcessMvnormal(data,       
-                                      alphaPriors = c(2,4),
+                                      alphaPriors = c(8,4),
                                       g0Priors = list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5),
                                       numInitialClusters = min(20, ceiling(sqrt(nrow(data)))))
       dp <- Fit(dp, dp_iter, progressBar = FALSE)
