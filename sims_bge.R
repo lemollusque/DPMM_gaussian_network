@@ -14,6 +14,7 @@ library(mvtnorm)
 
 source("comparison_algs.R")
 source("dualPC.R")
+source("Fourier_fns.R")
 source("dao.R")
 source("fns.R")
 insertSource("fns.R", package = "BiDAG")
