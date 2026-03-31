@@ -24,22 +24,23 @@ source("fns.R")
 # --------------------------------------------------
 
 init.seed <- 100
-iter <- 100
+iter <- 10
 dual <- TRUE
 
 n <- 10
-shift_sizes <- c(10)
+shift_sizes <- c(0, 1,2,5)
 N_samples <- c(100)
 
 dp_fits <- 1
-dp_iter <- 100
+dp_iter <- 500
 
 alpha_grid <- list(
-  c(2,4)
+  alpha_prior=c(2,4)
 )
 
 g0_grid <- list(
-  list(mu0 = rep(0, n), kappa0 = 1, nu = n, Lambda = diag(n)/(n))
+  
+  list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5)
 )
 
 # --------------------------------------------------
@@ -82,11 +83,11 @@ make_job_seed <- function(init.seed, k) {
   init.seed + k
 }
 
-make_file_name <- function(alpha_id, kappa, lambda_coef, shift_size, N, i) {
+make_file_name <- function(alpha_id, kappa, nu, lambda_coef, shift_size, N, i) {
   paste0(
     "Tuning/",
     "alpha_id", alpha_id,
-    "_g0_id", kappa,"_", lambda_coef,
+    "_g0_id", kappa,"_", nu, "-", lambda_coef,
     "_shift_size", shift_size,
     "_N", N,
     "_rep", sprintf("%03d", i),
@@ -141,11 +142,13 @@ with_progress({
     alpha = alpha_prior[[1]]/alpha_prior[[2]]
     g0_prior <- g0_grid[[g0_id]]
     kappa = g0_prior$kappa0
+    nu = g0_prior$nu
     lambda_coef = g0_prior$Lambda[1,1]
     
     file_name <- make_file_name(
       alpha_id = alpha,
       kappa = kappa,
+      nu = nu,
       lambda_coef = lambda_coef,
       shift_size = shift_size,
       N = N,
@@ -164,7 +167,8 @@ with_progress({
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1 * (trueDAG != 0)
     
-    data <- simulate_bimodal(truegraph, n=N, bimodal_sep=shift_size)
+    data <- simulate_bimodal_one_node(t(truegraph), n=N, bimodal_sep=shift_sizes)
+    
     
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -178,8 +182,7 @@ with_progress({
         data,
         g0Priors = g0_prior,
         alphaPriors = alpha_prior,
-        numInitialClusters = nrow(data)
-      )
+        numInitialClusters = 10)
       dp <- Fit(dp, dp_iter, progressBar = FALSE)
       
       fit_results <- dp_nclusters_iters(dp)
@@ -189,6 +192,7 @@ with_progress({
     }
     iter_results$alpha <- alpha
     iter_results$kappa <- kappa
+    iter_results$nu <- nu
     iter_results$lambda_coef <- lambda_coef
     iter_results$shift_size <- shift_size
     iter_results$N <- N
@@ -224,14 +228,14 @@ summary_results <- results %>%
   mutate(kappa_lambda = paste0("k=", kappa, ", T=", lambda_coef))
 
 label_df <- summary_results %>%
-  filter(iter %% 50 == 0) %>%
+  filter(iter %% 100 == 0) %>%
   mutate(label = round(mean_clusters, 2))
 
 # --------------------------------------------------
 # Plot
 # --------------------------------------------------
 
-ggplot() +
+ggplot()  +
   geom_point(
     data = results,
     aes(x = iter, y = n_clusters),
@@ -248,5 +252,5 @@ ggplot() +
     vjust = -0.5,
     size = 3
   )+
-  facet_grid(kappa_lambda ~ alpha) +
+  facet_grid(shift_size ~ alpha) +
   theme_bw()
