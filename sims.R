@@ -204,7 +204,7 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
     size = 3
   ) +
   
-  labs(x = NULL, y = "E=SHD") +
+  labs(x = NULL, y = "E-SHD") +
   facet_grid(N ~ d, scales = "free_y") +
   theme_bw() +
   theme(
