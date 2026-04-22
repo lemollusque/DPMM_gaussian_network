@@ -32,9 +32,9 @@ bge.par = 0.01
 dual <- TRUE
 # dirichlet params
 dp_iter <- 1000
-burnin <- 200
+burnin <- 500
 L <- 100
-dp_fits <- 2
+dp_fits <- 4
 
 # dp settings
 dp_usrpar <- list(
@@ -48,17 +48,20 @@ dp_usrpar <- list(
 
 # search spaces
 DP.searchspace <- set.searchspace(sachs.data, dual, "DP", usrpar = dp_usrpar)
+saveRDS(DP.searchspace, "Sachs/dpsearchspace.rds")
+DP.searchspace <- readRDS("Sachs/dpsearchspace.rds")
+
 bge.searchspace = set.searchspace(sachs.data, dual, "bge", bge.par)
 
 # DP score, partition
 dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE, iterations = 1200)
 dp.edgep <- post.edges(dp.fit)
-results <- compare_results(bge.fit, c(dp.edgep, "BGe, partition"), results, trueDAGbn)
+results <- compare_results(dp.fit, c(dp.edgep, "DP, partition"), results, trueDAGbn)
 
 # DP score, order
 dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE, iterations = 1200)
 dp.edgep <- post.edges(dp.fit)
-results <- compare_results(bge.fit, c(dp.edgep, "BGe, partition"), results, trueDAGbn)
+results <- compare_results(dp.fit, c(dp.edgep, "DP, partition"), results, trueDAGbn)
 
 # BGe score, partition
 bge.fit <-  bge.partition.mcmc(bge.searchspace, order = F, iterations = 1200)
