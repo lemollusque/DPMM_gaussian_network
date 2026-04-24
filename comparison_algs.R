@@ -93,7 +93,7 @@ compare_results <- function(fit, method_vec, result_df, trueDAG) {
     method_vec[new+1] <- "pattern"  # Compare pattern graph
     pattList <- lapply(cpdagList, function(x) pdag2pattern(x))
     truepatt <- pdag2pattern(trueCPDAG)
-    result_patt <- compareFit(pattList, pdag2pattern(as.matrix(fit$DAG)), fit$time, truepatt, fit$weights)
+    result_patt <- compareFit(pattList, pdag2pattern(BiDAG:::dagadj2cpadj(fit$DAG)), fit$time, truepatt, fit$weights)
     result_df <- rbind(result_df, data.frame(t(c(result_patt, method_vec))))
   }
   return(result_df)
