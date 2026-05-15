@@ -558,7 +558,8 @@ bimodal_err <- function(n, var, sep_sd=2) {
   rnorm(n, mean=comp * shift, sd=sd0)
 }
 
-simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2) {
+simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
+                             return_model = FALSE) {
   # Randomly simulates data.
   # g = dag
   # n = sample size
@@ -615,5 +616,13 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2) {
   if (is.null(colnames(X))) {
     colnames(X) <- paste0("v", seq_len(ncol(X)))
   }
+
+  if (return_model) {
+    return(list(
+      data = X,
+      model = model
+      ))
+  }
+
   return(X)  
 }
