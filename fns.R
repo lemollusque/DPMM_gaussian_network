@@ -41,12 +41,12 @@ dp_membership_probs <- function(dp, burnin, L){
   }
   return(probs_list)
 }
-add_membershipp <- function(membershipp_list, membershipp, child, parents) {
+add_membershipp <- function(membershipp_list, membershipp, child, parents, vars = c(child, parents)) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
     membershipp = membershipp,
     child = child, 
     parents = parents, 
-    vars = c(child, parents)
+    vars = vars
   )
   membershipp_list
 }
@@ -317,19 +317,8 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     # prepare dirichlet gamma list
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
-      dp <- DirichletProcessMvnormal(data,       
-                                      alphaPriors = c(8,4),
-                                      g0Priors = list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5),
-                                      numInitialClusters = min(20, ceiling(sqrt(nrow(data)))))
-      dp <- Fit(dp, dp_iter, progressBar = FALSE)
-      
-      Gamma_sample <- dp_membership_probs(dp, burnin, L)
-      Gamma_list <- add_membershipp(
-        Gamma_list,
-        Gamma_sample,
-        child = colnames(data)[1],
-        parents = colnames(data)
-      )
+          parents = parents,
+          vars    = c(child, mb)
     }
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
