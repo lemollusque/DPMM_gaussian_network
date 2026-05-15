@@ -314,12 +314,39 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     burnin <- usrpar$dp_burnin
     L <- usrpar$dp_n_sample
     dp_fits <- usrpar$dp_fits
-    n = ncol(data)
     # prepare dirichlet gamma list
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
+      for (child in colnames(startspace)){
+        parents <- names(which(startspace[ , child] == 1))
+        children <- names(which(startspace[child, ] == 1))
+        neighbour <- setdiff(unique(c(parents, children)), child)
+        
+        # create DP
+        dp_data = data[,c(child, neighbour), drop = FALSE]
+        if (length(neighbour) == 0){
+          dp <-  DirichletProcessGaussian(dp_data)
+        }
+        else{
+          n = ncol(dp_data)
+          dp <- DirichletProcessMvnormal(dp_data,       
+                                alphaPriors = c(8,4),
+                                g0Priors = list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5),
+                                numInitialClusters = min(20, ceiling(sqrt(nrow(dp_data)))))
+        }
+        dp <- Fit(dp, dp_iter, progressBar = FALSE)
+        
+        Gamma_sample <- dp_membership_probs(dp, burnin, L)
+        # add meta data in list
+        Gamma_list <- add_membershipp(
+          Gamma_list, 
+          Gamma_sample, 
+          child   = child, 
           parents = parents,
-          vars    = c(child, mb)
+          vars    = c(child, neighbour)
+        )
+        
+      }
     }
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
