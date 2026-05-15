@@ -171,10 +171,7 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   # extract needed score parameters
   needed <- c(j, parentnodes)
 
-  dp_scoreparam_list <- Filter(function(e) 
-    all(param$labels[needed] %in% e$meta$vars), 
-    param$dp_scoreparam_list
-  )
+  dp_scoreparam_list <- param$dp_scoreparam_list
   # put all score parameters needed in one list.
   scoreparam_list = unlist(lapply(dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
   n_score = length(scoreparam_list)
