@@ -395,23 +395,6 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
 ## Generate data
 ## 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-simulate_bimodal_fourier <- function(dag, n, bimodal_sep = 2, lambda = lambda, noise.sd = 1, concentration = 1) {
-  n1 <- sample(1:(n - 1), 1)
-  n2 <- n - n1
-  
-  X1 <- Fou_nldata(dag, n1, lambda = lambda, noise.sd = 1, standardize = T, concentration = concentration) 
-  X2 <- Fou_nldata(dag, n2, lambda = lambda, noise.sd = 1, standardize = T, concentration = concentration) 
-
-  v <- rnorm(ncol(X2))
-  v <- v / sqrt(sum(v^2))
-  shift <- bimodal_sep * v
-  X2 <- sweep(X2, 2, shift, "+")
-  data <- standardize(rbind(X1, X2))
-  if (is.null(colnames(data))) {
-    colnames(data) <- paste0("v", seq_len(ncol(data)))
-  }
-  data  
-}
 simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
   model1 <- corr(dag)
   model2 <- corr(dag)
