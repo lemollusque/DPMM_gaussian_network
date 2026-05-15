@@ -477,25 +477,39 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
   }
   data  
 }
-simulate_bimodal <- function(dag, n, bimodal_sep=2) {
-    model1 <- corr(dag)
-    model2 <- corr(dag)
+simulate_bimodal <- function(dag, n, bimodal_sep = 2,
+                             return_model = FALSE) {
+  model1 <- corr(dag)
+  model2 <- corr(dag)
 
-    n1 <- sample(1:(n - 1), 1)
-    n2 <- n - n1
-    
-    X1 <- simulate(model1$B, model1$O, n1)
-    X2 <- simulate(model2$B, model2$O, n2)
-    
-    v <- rnorm(ncol(X2))
-    v <- v / sqrt(sum(v^2))
-    shift <- bimodal_sep * v
-    X2 <- sweep(X2, 2, shift, "+")
-    data <- standardize(rbind(X1, X2))
-    if (is.null(colnames(data))) {
-      colnames(data) <- paste0("v", seq_len(ncol(data)))
-    }
-    data    
+  n1 <- sample(1:(n - 1), 1)
+  n2 <- n - n1
+
+  X1 <- simulate(model1$B, model1$O, n1)
+  X2 <- simulate(model2$B, model2$O, n2)
+
+  v <- rnorm(ncol(X2))
+  v <- v / sqrt(sum(v^2))
+  shift <- bimodal_sep * v
+  X2 <- sweep(X2, 2, shift, "+")
+
+  data <- standardize(rbind(X1, X2))
+
+  if (is.null(colnames(data))) {
+    colnames(data) <- paste0("v", seq_len(ncol(data)))
+  }
+
+  if (return_model) {
+    return(list(
+      data = data,
+      model1 = model1,
+      model2 = model2,
+      n1 = n1,
+      n2 = n2
+    ))
+  }
+
+  data
 }
 bimodal_err <- function(n, var, sep_sd=2) {
   sd0 <- sqrt(var)
