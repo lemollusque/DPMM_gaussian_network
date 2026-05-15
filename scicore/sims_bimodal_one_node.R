@@ -117,12 +117,26 @@ with_progress({
     myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1*(trueDAG != 0)
-    data <- simulate_bimodal_one_node(t(truegraph), n=N, bimodal_sep=d)
     
+    sim <- simulate_bimodal_one_node(
+      g = t(truegraph),
+      n = N,
+      bimodal_sep = d,
+      return_model = TRUE
+    )
+    
+    data <- sim$data
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
     
+    detectable_truegraph <- make_detectable_truegraph(
+      truegraph = truegraph,
+      R = sim$model$R,
+      N = N,
+      alpha = 0.05,
+      power = 0.8
+    )
     
     # dp settings
     dp_usrpar <- list(
@@ -143,22 +157,22 @@ with_progress({
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
     )
     
     iter_results$N <- N

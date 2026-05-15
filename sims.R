@@ -14,23 +14,22 @@ library(mvtnorm)
 
 source("comparison_algs.R")
 source("dualPC.R")
-source("Fourier_fns.R")
 source("dao.R")
 source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 100
-iter <- 100
+iter <- 7
 dual <- TRUE
 
 # dirichlet params
-dp_iter <- 1000
-burnin <- 800
-L <- 50
-dp_fits <- 2
+dp_iter <- 100
+burnin <- 80
+L <- 10
+dp_fits <- 1
 
 param_grid <- expand.grid(
-  N = c(100, 200, 500, 1000),
+  N = c(100),
   n = 10,
   d = c(0, 1, 2, 5, 10),
   bge.par = 0.01
@@ -76,9 +75,9 @@ with_progress({
     
     source("comparison_algs.R")
     source("dualPC.R")
+    source("Fourier_fns.R")
     source("dao.R")
     source("fns.R")
-    source("Fourier_fns.R")
     insertSource("fns.R", package = "BiDAG")
     
     # set params
