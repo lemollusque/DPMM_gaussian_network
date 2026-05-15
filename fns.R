@@ -395,6 +395,45 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
 ## Generate data
 ## 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+min_detectable_r <- function(N, q = 0, alpha = 0.05, power = 0.8) {
+  T_star <- abs(qnorm(alpha / 2))
+  z_power <- qnorm(power)
+  tanh((T_star + z_power) / sqrt(N - q - 3))
+}
+pcor_from_cor <- function(R) {
+  P <- -psolve(R)
+  diag(P) <- 1
+  P
+}
+make_detectable_truegraph <- function(truegraph, R, N,
+                                      alpha = 0.05,
+                                      power = 0.8) {
+  p <- ncol(truegraph)
+  q <- p - 2 # max conditioning set size for PC algorithm is p-2
+
+  pcor <- pcor_from_cor(R)
+
+  threshold <- min_detectable_r(
+    N = N,
+    q = q,
+    alpha = alpha,
+    power = power
+  )
+
+  detectable <- truegraph * 0
+  edge_idx <- which(truegraph == 1, arr.ind = TRUE)
+
+  for (e in seq_len(nrow(edge_idx))) {
+    i <- edge_idx[e, 1]
+    j <- edge_idx[e, 2]
+
+    if (abs(pcor[i, j]) >= threshold) {
+      detectable[i, j] <- 1
+    }
+  }
+  dimnames(detectable) <- dimnames(truegraph)
+  detectable
+}
 simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
   model1 <- corr(dag)
   model2 <- corr(dag)
