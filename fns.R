@@ -485,7 +485,8 @@ make_detectable_truegraph_bimodal <- function(truegraph,
   dimnames(detectable) <- dimnames(truegraph)
   detectable
 }
-simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
+simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
+                             return_model = FALSE) {
   model1 <- corr(dag)
   model2 <- corr(dag)
 
@@ -503,6 +504,17 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
   if (is.null(colnames(data))) {
     colnames(data) <- paste0("v", seq_len(ncol(data)))
   }
+
+  if (return_model) {
+    return(list(
+      data = data,
+      model1 = model1,
+      model2 = model2,
+      n1 = n1,
+      n2 = n2
+    ))
+  }
+
   data  
 }
 simulate_bimodal <- function(dag, n, bimodal_sep = 2,
