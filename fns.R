@@ -489,7 +489,7 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
   model1 <- corr(dag)
   model2 <- corr(dag)
 
-  n1 <- sample(1:(n - 1), 1)
+  n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
   n2 <- n - n1
 
   X1 <- rmvt(n1, sigma = model1$R, df = df)
@@ -510,7 +510,7 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
   model1 <- corr(dag)
   model2 <- corr(dag)
 
-  n1 <- sample(1:(n - 1), 1)
+  n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
   n2 <- n - n1
 
   X1 <- simulate(model1$B, model1$O, n1)
