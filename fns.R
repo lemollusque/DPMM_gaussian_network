@@ -423,6 +423,40 @@ make_detectable_truegraph <- function(truegraph, R, N,
   dimnames(detectable) <- dimnames(truegraph)
   detectable
 }
+make_detectable_truegraph_bimodal <- function(truegraph,
+                                              R1, R2,
+                                              N,
+                                              n1, n2,
+                                              alpha = 0.05,
+                                              power = 0.8,
+                                              rule = c("either", "both")) {
+  rule <- match.arg(rule)
+
+  det1 <- make_detectable_truegraph(
+    truegraph = truegraph,
+    R = R1,
+    N = n1,
+    alpha = alpha,
+    power = power
+  )
+
+  det2 <- make_detectable_truegraph(
+    truegraph = truegraph,
+    R = R2,
+    N = n2,
+    alpha = alpha,
+    power = power
+  )
+
+  detectable <- switch(
+    rule,
+    either = 1 * ((det1 + det2) > 0),
+    both   = 1 * ((det1 == 1) & (det2 == 1))
+  )
+
+  dimnames(detectable) <- dimnames(truegraph)
+  detectable
+}
 simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3) {
   model1 <- corr(dag)
   model2 <- corr(dag)
