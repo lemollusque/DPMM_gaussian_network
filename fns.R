@@ -238,7 +238,11 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
     })
     corescore_list[s] = corescore
   }
-  mean(corescore_list)
+  logMeanExp <- function(x) {
+    m <- max(x)
+    m + log(mean(exp(x - m)))
+  }
+  logMeanExp(corescore_list)
 }
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
