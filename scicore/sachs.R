@@ -21,8 +21,8 @@ insertSource("fns.R", package = "BiDAG")
 
 sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
-trueDAGbn <- read.csv("Sachs/sachs.csv")
-trueDAGbn <- as.matrix(trueDAGbn)
+trueDAG <- read.csv("Sachs/sachs.csv")
+trueDAG <- as.matrix(trueDAG)
 
 bge.par = 0.01
 dual <- TRUE 
