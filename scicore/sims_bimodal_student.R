@@ -151,7 +151,16 @@ with_progress({
       dp_iter = dp_iter,
       dp_burnin = burnin,
       dp_n_sample = L,
-      dp_fits = dp_fits
+      dp_fits = dp_fits,
+      alphaPriors = c(8,4),
+      g0Priors = function(n) {
+        list(mu0 = rep(0, n), 
+             kappa0 = 0.1, 
+             nu = n+5, 
+             Lambda = diag(n)*0.5)
+      },
+      numInitialClusters = min(20, ceiling(sqrt(N))),
+      progressBar = T
     )
     
     # search spaces

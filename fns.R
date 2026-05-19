@@ -310,6 +310,30 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     
   if(method == "DP") {
     # dirichlet params
+    if (is.null(usrpar$alphaPriors)) {
+      usrpar$alphaPriors <- c(2, 4)
+    }
+    if (is.null(usrpar$g0Priors)) {
+      usrpar$g0Priors <- function(n) {
+        list(
+          mu0 = rep(0, n),
+          kappa0 = 1,
+          nu = n,
+          Lambda = diag(n) / n
+        )
+      }
+    }
+    if (is.null(usrpar$numInitialClusters)) {
+      usrpar$numInitialClusters <- min(20, ceiling(sqrt(nrow(data))))
+    }
+    if (is.null(usrpar$progressBar)) {
+      usrpar$progressBar <- FALSE
+    }
+    alphaPriors <- usrpar$alphaPriors
+    g0Priors <- usrpar$g0Priors
+    numInitialClusters <- usrpar$numInitialClusters
+    progressBar <- usrpar$progressBar
+
     dp_iter <- usrpar$dp_iter
     burnin <- usrpar$dp_burnin
     L <- usrpar$dp_n_sample
@@ -330,11 +354,11 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
         else{
           n = ncol(dp_data)
           dp <- DirichletProcessMvnormal(dp_data,       
-                                alphaPriors = c(8,4),
-                                g0Priors = list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5),
-                                numInitialClusters = min(20, ceiling(sqrt(nrow(dp_data)))))
+                                alphaPriors = alphaPriors,
+                                g0Priors = g0Priors(n),
+                                numInitialClusters = numInitialClusters)
         }
-        dp <- Fit(dp, dp_iter, progressBar = FALSE)
+        dp <- Fit(dp, dp_iter, progressBar = progressBar)
         
         Gamma_sample <- dp_membership_probs(dp, burnin, L)
         # add meta data in list
