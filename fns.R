@@ -324,7 +324,7 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
       }
     }
     if (is.null(usrpar$numInitialClusters)) {
-      usrpar$numInitialClusters <- min(20, ceiling(sqrt(nrow(data))))
+      usrpar$numInitialClusters <- 1
     }
     if (is.null(usrpar$progressBar)) {
       usrpar$progressBar <- FALSE
