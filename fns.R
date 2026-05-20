@@ -137,7 +137,8 @@ usrscoreparameters <- function(initparam,
       }
       
       N <- sum(Nk)
-      
+      clusterWeights <- Nk/N
+
       scoreconstvec <- numeric(initparam$n)
       for (j in (1:initparam$n)) {
         awp <- usrpar$aw - initparam$n + j
@@ -151,7 +152,8 @@ usrscoreparameters <- function(initparam,
         K = K,
         TN = TN,
         awpN = awpN,
-        scoreconstvec = scoreconstvec
+        scoreconstvec = scoreconstvec,
+        clusterWeights = clusterWeights
       )
     }
     initparam$dp_scoreparam_list[[d]] <- list(
