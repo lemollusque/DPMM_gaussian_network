@@ -652,3 +652,116 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
 
   return(X)  
 }
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Non interventional effects
+## Bestie equivalent functions
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+DP_DAGintervention <- function(incidences, dataParams, sample = TRUE) {
+
+  one_dag <- function(incidence) {
+    p <- ncol(incidence)
+    coeffMatrix <- matrix(0, p, p)
+    colnames(coeffMatrix) <- rownames(coeffMatrix) <- colnames(incidence)
+
+    for (j in seq_len(p)) {
+      parentNodes <- which(incidence[, j] == 1)
+
+      if (length(parentNodes) == 0) next
+
+      beta <- DP_sample_node_beta(
+        j = j,
+        parentNodes = parentNodes,
+        dataParams = dataParams,
+        sample = sample
+      )
+
+      coeffMatrix[parentNodes, j] <- beta
+    }
+
+    solve(diag(p) - coeffMatrix)
+  }
+
+  if (is.matrix(incidences)) {
+    return(one_dag(incidences))
+  }
+
+  lapply(incidences, one_dag)
+}
+
+DP_sample_node_beta <- function(j, parentNodes, dataParams, sample = TRUE) {
+
+  child_name <- colnames(dataParams$data)[j]
+
+  d_idx <- which(vapply(
+    dataParams$dp_scoreparam_list,
+    function(x) x$meta$child == child_name,
+    logical(1)
+  ))
+
+  if (length(d_idx) == 0) {
+    stop("No DP score parameters found for child: ", child_name)
+  }
+
+  # If several DP fits exist for the same child, choose one
+  d <- sample(d_idx, 1)
+
+  scoreparam_list <- dataParams$dp_scoreparam_list[[d]]$scores
+
+  # Choose one posterior DP membership draw
+  if (sample) {
+    l <- sample(seq_along(scoreparam_list), 1)
+  } else {
+    l <- 1
+  }
+
+  scoreparam <- scoreparam_list[[l]]
+
+  if (is.null(scoreparam$clusterWeights)) {
+    stop("clusterWeights missing from scoreparam")
+  }
+
+  K <- scoreparam$K
+
+  beta_by_cluster <- vector("list", K)
+
+  for (k in seq_len(K)) {
+    TNk <- scoreparam$TN[[k]]
+    df <- scoreparam$awpN[k] - dataParams$n + length(parentNodes) + 1
+
+    R11 <- TNk[parentNodes, parentNodes, drop = FALSE]
+    R12 <- TNk[parentNodes, j, drop = FALSE]
+
+    R11inv <- solve(R11)
+    mb <- R11inv %*% R12
+
+    divisor <- TNk[j, j] - t(R12) %*% mb
+    sigma <- as.numeric(divisor / df) * R11inv
+
+    if (sample) {
+      beta_by_cluster[[k]] <- as.vector(
+        mvtnorm::rmvt(
+          1,
+          sigma = sigma,
+          df = df,
+          delta = as.vector(mb)
+        )
+      )
+    } else {
+      beta_by_cluster[[k]] <- as.vector(mb)
+    }
+  }
+
+  if (sample) {
+    k <- sample(seq_len(K), 1, prob = scoreparam$clusterWeights)
+    beta_by_cluster[[k]]
+  } else {
+    Reduce(
+      "+",
+      Map(
+        function(beta, w) w * beta,
+        beta_by_cluster,
+        scoreparam$clusterWeights
+      )
+    )
+  }
+}
