@@ -21,14 +21,12 @@ insertSource("fns.R", package = "BiDAG")
 
 sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
-trueDAG <- read.csv("Sachs/sachs.csv")
-trueDAG <- as.matrix(trueDAG)
 
 bge.par = 0.01
 dual <- TRUE 
 # dirichlet params
-dp_iter <- 100
-burnin <- 50
+dp_iter <- 200
+burnin <- 100
 L <- 10
 dp_fits <- 1
 
@@ -45,17 +43,18 @@ dp_usrpar <- list(
 init.seed <- 100
 iter <- 20
 
-dir.create("Sachs/parallel_results", showWarnings = FALSE, recursive = TRUE)
+dir.create("Sachs/parallel_searchspaces", showWarnings = FALSE, recursive = TRUE)
 
-make_file_name <- function(i) {
-  paste0("Sachs/parallel_results/sachs_rep_", sprintf("%03d", i), ".rds")
+
+make_dp_searchspace_file <- function(i) {
+  paste0("Sachs/parallel_searchspaces/DP_searchspace_rep_", sprintf("%03d", i), ".rds")
 }
 
 make_job_seed <- function(init.seed, i) {
   init.seed + i
 }
 
-n_cores <- max(1, availableCores() - 1)
+n_cores <- max(1, availableCores())
 
 plan(multisession, workers = n_cores)
 registerDoFuture()
@@ -81,9 +80,9 @@ with_progress({
     source("fns.R")
     insertSource("fns.R", package = "BiDAG")
     
-    file_name <- make_file_name(i)
+    dp_searchspace_file <- make_dp_searchspace_file(i)
     
-    if (file.exists(file_name)) {
+    if (file.exists(dp_searchspace_file)) {
       p(sprintf("skip %d", i))
       return(NULL)
     }
@@ -98,79 +97,8 @@ with_progress({
       "DP",
       usrpar = dp_usrpar
     )
+    saveRDS(DP.searchspace, dp_searchspace_file)
     
-    bge.searchspace <- set.searchspace(
-      sachs.data,
-      dual,
-      "bge",
-      bge.par
-    )
-    
-    # DP score, partition
-    dp.fit <- DP.partition.mcmc(
-      DP.searchspace,
-      order = FALSE,
-      iterations = 1200
-    )
-    dp.edgep <- post.edges(dp.fit)
-    iter_results <- compare_results(
-      dp.fit,
-      c(dp.edgep, "DP, partition"),
-      iter_results,
-      trueDAG
-    )
-    
-    # DP score, order
-    dp.fit <- DP.partition.mcmc(
-      DP.searchspace,
-      order = TRUE,
-      iterations = 1200
-    )
-    dp.edgep <- post.edges(dp.fit)
-    iter_results <- compare_results(
-      dp.fit,
-      c(dp.edgep, "DP, order"),
-      iter_results,
-      trueDAG
-    )
-    
-    # BGe score, partition
-    bge.fit <- bge.partition.mcmc(
-      bge.searchspace,
-      order = FALSE,
-      iterations = 1200
-    )
-    bge.edgep <- post.edges(bge.fit)
-    iter_results <- compare_results(
-      bge.fit,
-      c(bge.edgep, "BGe, partition"),
-      iter_results,
-      trueDAG
-    )
-    
-    # BGe score, order
-    bge.fit <- bge.partition.mcmc(
-      bge.searchspace,
-      order = TRUE,
-      iterations = 1200
-    )
-    bge.edgep <- post.edges(bge.fit)
-    iter_results <- compare_results(
-      bge.fit,
-      c(bge.edgep, "BGe, order"),
-      iter_results,
-      trueDAG
-    )
-    
-    colnames(iter_results) <- c(
-      "ESHD", "eTP", "eFP", "TPR", "FPR_P", "time",
-      "ErktoAkt", "ErktoPKA", "Scorefn", "graph"
-    )
-    
-    iter_results$rep <- i
-    iter_results$job_seed <- make_job_seed(init.seed, i)
-    
-    saveRDS(iter_results, file_name)
     
     p(sprintf("done %d", i))
   }
