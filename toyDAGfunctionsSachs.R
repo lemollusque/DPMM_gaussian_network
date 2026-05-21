@@ -58,7 +58,7 @@ sampleDAGs <- function(inData, scoreObject, nDigraphs = 50, seed=101, dname="", 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Compute intervention effects with Bestie
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-computeEffects <- function(n, seed=101, dname=""){
+computeEffects <- function(n, seed=101, dname="", DP=FALSE){
   
   if (!dir.exists("./Sachs/saveout")) {dir.create("./Sachs/saveout")} ## create output folder if it doesn't exist
   if(file.exists(paste0("./Sachs/saveout/dagdraw", n, "seed", seed, dname, ".RData"))){
@@ -69,7 +69,15 @@ computeEffects <- function(n, seed=101, dname=""){
     # saving them all in a list;
     # First check if effects have already been estimated and saved to file
     if(!file.exists(paste0("./Sachs/saveout/effects", n, "seed", seed, dname, ".RData"))){
-      causalMats <- DAGintervention(sampledDAGs, scoreObject, sample=TRUE)
+      if(DP){
+        causalMats <- DP_DAGintervention(
+          incidences = sampledDAGs,
+          dataParams = scoreObject,
+          sample = TRUE
+        )
+      } else{
+        causalMats <- DAGintervention(sampledDAGs, scoreObject, sample=TRUE)
+      }
 
       # save estimated intervention effects to an .RData file
       save(causalMats,
