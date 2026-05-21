@@ -526,6 +526,10 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
   v <- v / sqrt(sum(v^2))
   shift <- bimodal_sep * v
   X2 <- sweep(X2, 2, shift, "+")
+
+  raw_mean = colMeans(rbind(X1, X2))
+  raw_sd = apply(rbind(X1, X2), 2, sd)
+
   data <- standardize(rbind(X1, X2))
   if (is.null(colnames(data))) {
     colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -537,7 +541,9 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
       model1 = model1,
       model2 = model2,
       n1 = n1,
-      n2 = n2
+      n2 = n2,
+      raw_mean = raw_mean,
+      raw_sd = raw_sd
     ))
   }
 
@@ -559,8 +565,10 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
   shift <- bimodal_sep * v
   X2 <- sweep(X2, 2, shift, "+")
 
-  data <- standardize(rbind(X1, X2))
+  raw_mean = colMeans(rbind(X1, X2))
+  raw_sd = apply(rbind(X1, X2), 2, sd)
 
+  data <- standardize(rbind(X1, X2))
   if (is.null(colnames(data))) {
     colnames(data) <- paste0("v", seq_len(ncol(data)))
   }
@@ -571,7 +579,9 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
       model1 = model1,
       model2 = model2,
       n1 = n1,
-      n2 = n2
+      n2 = n2,
+      raw_mean = raw_mean,
+      raw_sd = raw_sd
     ))
   }
 
@@ -638,6 +648,10 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
   ord <- invert_order(ord)
   X <- X[, ord]
   
+
+  raw_mean = colMeans(X)
+  raw_sd = apply(X, 2, sd)
+
   X <- standardize(X)
   if (is.null(colnames(X))) {
     colnames(X) <- paste0("v", seq_len(ncol(X)))
@@ -646,7 +660,9 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
   if (return_model) {
     return(list(
       data = X,
-      model = model
+      model = model,
+      raw_mean = raw_mean,
+      raw_sd = raw_sd
       ))
   }
 
