@@ -643,11 +643,14 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
       X[, i] <- X[, i] + err(n, O[i])
     }
   }
+  # save node
+  chosen_original <- ord[chosen_ord]
+  bimodal_node_name = colnames(X)[chosen_original]
+
   # reorder X
   ord <- invert_order(ord)
   X <- X[, ord]
   
-
   raw_mean = colMeans(X)
   raw_sd = apply(X, 2, sd)
 
@@ -661,7 +664,9 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
       data = X,
       model = model,
       raw_mean = raw_mean,
-      raw_sd = raw_sd
+      raw_sd = raw_sd,
+      bimodal_node = chosen_original,
+      bimodal_node_name = bimodal_node_name
       ))
   }
 
