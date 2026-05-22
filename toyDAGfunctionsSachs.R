@@ -303,7 +303,6 @@ plotCompareEffects <- function(effects4plot,
   roundeffs <- round(aveffs, 3)
   
   efflabs <- colnames(roundeffs)
-  cat(efflabs, "\n")
   
   minx <- min(apply(effsarray, c(1,2), min))
   maxx <- max(apply(effsarray, c(1,2), max))
