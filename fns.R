@@ -637,7 +637,6 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
     }
     
     # additive error
-    # additive error
     if (i == chosen_ord) {
       X[, i] <- X[, i] + bimodal_err(n, O[i], sep_sd=bimodal_sep)
     } else {
