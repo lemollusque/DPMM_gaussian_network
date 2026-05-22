@@ -266,3 +266,113 @@ plotEffects <- function(effects4plot,
     mtext(title_text, outer = TRUE, cex = 0.9)
   }
 }
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Plot compare distributions of effects
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+wasserstein1d_empirical <- function(x, y) {
+  x <- sort(as.numeric(x))
+  y <- sort(as.numeric(y))
+  
+  m <- max(length(x), length(y))
+  probs <- seq(0, 1, length.out = m)
+  
+  mean(abs(
+    quantile(x, probs = probs, type = 8, names = FALSE) -
+      quantile(y, probs = probs, type = 8, names = FALSE)
+  ))
+}
+
+
+plotCompareEffects <- function(effects4plot,
+                                   trueEffects,
+                                   sortlabs,
+                                   sigcutoff = 0.025,
+                                   xmargs = rep(0.1, 2),
+                                   label_size = 1,
+                                   title_text = "Distributions of Downstream Causal Effects\n") {
+  
+  orderingy = c(0, sortlabs) 
+  ## Provide labels in sortlabs in a customised order if desired
+  ### Pick an ordering which matches to some extent the node hierarchy on the DAG
+  
+  nn <- length(sortlabs)
+  effsarray <- round(simplify2array(effects4plot), 8)
+  truearray <- round(simplify2array(trueEffects), 8)
+  aveffs <- apply(effsarray, c(1,2), mean)
+  # estimate of the posterior mean of the intervention effects
+  roundeffs <- round(aveffs, 3)
+  
+  efflabs <- colnames(roundeffs)
+  cat(efflabs, "\n")
+  
+  minx <- min(apply(effsarray, c(1,2), min))
+  maxx <- max(apply(effsarray, c(1,2), max))
+  
+  Wdist <- matrix(NA_real_, nn, nn)
+  
+  for (i in seq_len(nn)) {
+    for (j in seq_len(nn)) {
+      Wdist[i, j] <- wasserstein1d_empirical(
+        truearray[i, j, ],
+        effsarray[i, j, ]
+      )
+    }
+  }
+  
+  Wscaled <- pmin(Wdist, 1)
+  heatcols <- colorRampPalette(c("white", "gold", "orange", "red"))(100)
+  
+  par(mfrow = c(nn+1, nn+1))
+  par(oma = rep(0.2,4) + c(0,0,5*(title_text!=""),0))
+  par(mar = rep(0,4))
+  
+  for(i in 0:nn+1){
+    ii <- orderingy[i+1]
+    for(j in 0:nn){
+      jj <- orderingy[j+1]
+      if (i == (nn + 1) || j == 0) {
+        setPlot(xlim = c(-1.1, 1.1), ylim = c(0, 1), col = "darkorchid4")
+        if (j == 0 && i < (nn + 1)) {
+          text(0, 0.5, efflabs[ii], cex = label_size)
+        }
+        if (i == (nn + 1) && j > 0) {
+          text(0, 0.5, efflabs[jj], srt = 90, cex = label_size)
+        }
+      } else {
+        heat_id <- max(1, ceiling(Wscaled[ii, jj] * 100))
+        heat_col <- adjustcolor(heatcols[heat_id], alpha.f = 0.45)
+        if (!(roundeffs[ii, jj] == 0 || roundeffs[ii, jj] == 1)) {
+          d <- density(effsarray[ii, jj, ])
+          setPlot(d, xlim = c(-2, 2), col = "dodgerblue")
+          u <- par("usr")
+          rect(u[1], u[3], u[2], u[4], col = heat_col, border = NA)
+          polygon(d, col = "dodgerblue", border = "dodgerblue")
+          abline(v = 0, col = "firebrick3", lty = 2)
+          u <- par("usr")
+          text(
+            (u[1] + u[2]) / 2,
+            (u[3] + u[4]) / 2,
+            paste0(
+              "W=", format(round(Wdist[ii, jj], 2), nsmall = 2)
+            )
+          )
+        } else {
+          setPlot(xlim = c(-2, 2), ylim = c(0, 1), col = "darkorchid4")
+          u <- par("usr")
+          rect(u[1], u[3], u[2], u[4], col = heat_col, border = NA)
+          text(
+            0, 0.5,
+            paste0(
+              "W=", format(round(Wdist[ii, jj], 2), nsmall = 2)
+            )
+          )
+        }
+      }
+    }
+  }
+  if (title_text != "") {
+    mtext(title_text, outer = TRUE, cex = 0.9)
+  }
+  
+  invisible(Wdist)
+}

@@ -244,3 +244,11 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             sortlabs = 1:n, 
             title_text = "BGe Estimated Distribution of Causal Effects\n")
 dev.off()
+
+# compare with true effects
+Wdist <- plotCompareEffects(
+  effects4plot = data4plot$alleffs,
+  trueEffects = trueSamples,
+  sortlabs = 1:n,
+  title_text = "Estimated Effects with Entrywise Wasserstein Distance\n"
+)
