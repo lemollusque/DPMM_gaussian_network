@@ -51,6 +51,10 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, vars 
   membershipp_list
 }
 #----------------------  BiDAG ----------------------------------
+logMeanExp <- function(x) {
+  m <- max(x)
+  m + log(mean(exp(x - m)))
+}
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
                                              dp_iter = 100,
@@ -239,10 +243,6 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
       }
     })
     corescore_list[s] = corescore
-  }
-  logMeanExp <- function(x) {
-    m <- max(x)
-    m + log(mean(exp(x - m)))
   }
   logMeanExp(corescore_list)
 }
