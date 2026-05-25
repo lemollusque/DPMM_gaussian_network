@@ -49,27 +49,23 @@ for (file in files){
   
   # DP score, partition
   dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE, iterations = 1200)
-  dp.edgep <- post.edges(dp.fit)
-  results <- compare_results(dp.fit, c(dp.edgep, "DP, partition"), results, trueDAG)
+  results <- compare_results(dp.fit, c("DP, partition"), results, trueDAG)
   
   # DP score, order
   dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE, iterations = 1200)
-  dp.edgep <- post.edges(dp.fit)
-  results <- compare_results(dp.fit, c(dp.edgep, "DP, order"), results, trueDAG)
+  results <- compare_results(dp.fit, c("DP, order"), results, trueDAG)
   
   # BGe score, partition
   bge.fit <-  bge.partition.mcmc(bge.searchspace, order = F, iterations = 1200)
-  bge.edgep <- post.edges(bge.fit)
-  results <- compare_results(bge.fit, c(bge.edgep, "BGe, partition"), results, trueDAG)
+  results <- compare_results(bge.fit, c("BGe, partition"), results, trueDAG)
   
   # BGe score, order
   bge.fit <-  bge.partition.mcmc(bge.searchspace, order = T, iterations = 1200)
-  bge.edgep <- post.edges(bge.fit)
-  results <- compare_results(bge.fit, c(bge.edgep, "BGe, order"), results, trueDAG)
+  results <- compare_results(bge.fit, c("BGe, order"), results, trueDAG)
 }
 
 colnames(results) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P", "time",
-                       "ErktoAkt", "ErktoPKA", "Scorefn", "graph")
+                       "Scorefn", "graph")
 saveRDS(results, "Sachs/Sachs_results.rds")
 
 results <- readRDS("Sachs/Sachs_results.rds")
