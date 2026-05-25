@@ -246,6 +246,25 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   }
   logMeanExp(corescore_list)
 }
+DPscoreDAG <- function(param, dag) {
+  n <- ncol(dag)
+  scoreparam_list = unlist(lapply(param$dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
+  L <- length(scoreparam_list)
+  dag_scores <- numeric(L)
+
+  for(l in 1:L){
+    curr_score <- 0
+    sub_param <- param
+    sub_param$dp_scoreparam_list <- list(list(scores = list(scoreparam_list[[l]])))
+    for(x in 1:n) {
+      parents <- which(dag[, x] == 1)
+      loc_score <- usrDAGcorescore(x, parents, n, sub_param)    
+      curr_score <- curr_score + loc_score  # build score
+    }
+    dag_scores[l] <- curr_score
+  }
+  logMeanExp(dag_scores)
+}
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
                                        dags, 
@@ -256,7 +275,7 @@ test_dag_score_equivalence <- function(usr_score_param,
   }
   
   # score all dags
-  scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(usr_score_param, A)))
+  scores <- unlist(lapply(dags, function(A) DPscoreDAG(usr_score_param, A)))
   
   # pairwise differences
   diffs <- outer(scores, scores, FUN = "-")
@@ -282,7 +301,7 @@ test_compare_dp_vs_bge <- function(usr_score_param,
   }
   
   # score all dags
-  scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(usr_score_param, A)))
+  scores <- unlist(lapply(dags, function(A) DPscoreDAG(usr_score_param, A)))
   bge_scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(bge_score_param, A)))
   
   diffs = scores-bge_scores
