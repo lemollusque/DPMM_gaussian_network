@@ -40,32 +40,48 @@ files <- list.files(
   full.names = TRUE
 )
 
-for (file in files){
-  print(file)
+plan(multisession, workers = min(length(files), availableCores() - 1))
+registerDoFuture()
+
+results_list <- foreach(
+  file = files,
+  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
+) %dorng% {
+  
+  source("fns.R")
+  insertSource("fns.R", package = "BiDAG")
+  source("toyDAGfunctionsSachs.R")
+  
+  cat("Running file:", file, "\n")
   
   DP.searchspace <- readRDS(file)
   bge.searchspace <- set.searchspace(sachs.data, dual, "bge", bge.par)
   
+  res <- data.frame()
   
-  # DP score, partition
   dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE, iterations = 1200)
-  results <- compare_results(dp.fit, c("DP, partition"), results, trueDAG)
+  res <- compare_results(dp.fit, c("DP, partition"), res, trueDAG)
   
-  # DP score, order
   dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE, iterations = 1200)
-  results <- compare_results(dp.fit, c("DP, order"), results, trueDAG)
+  res <- compare_results(dp.fit, c("DP, order"), res, trueDAG)
   
-  # BGe score, partition
-  bge.fit <-  bge.partition.mcmc(bge.searchspace, order = F, iterations = 1200)
-  results <- compare_results(bge.fit, c("BGe, partition"), results, trueDAG)
+  bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE, iterations = 1200)
+  res <- compare_results(bge.fit, c("BGe, partition"), res, trueDAG)
   
-  # BGe score, order
-  bge.fit <-  bge.partition.mcmc(bge.searchspace, order = T, iterations = 1200)
-  results <- compare_results(bge.fit, c("BGe, order"), results, trueDAG)
+  bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE, iterations = 1200)
+  res <- compare_results(bge.fit, c("BGe, order"), res, trueDAG)
+  
+  res$file <- basename(file)
+  res
 }
 
-colnames(results) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P", "time",
-                       "Scorefn", "graph")
+results <- dplyr::bind_rows(results_list)
+
+colnames(results)[1:8] <- c(
+  "ESHD", "eTP", "eFP", "TPR", "FPR_P", "time",
+  "Scorefn", "graph"
+)
+
 saveRDS(results, "Sachs/Sachs_results.rds")
 
 results <- readRDS("Sachs/Sachs_results.rds")
