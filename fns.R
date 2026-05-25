@@ -422,12 +422,31 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
                              scoretable = searchspace$scoretable, startspace = searchspace$endspace,
                              iterations = iterations, stepsave = 4)
   }
+  inter <- Sys.time()
+
   toburn <- round(burnin * dp.fit$info$samplesteps)
-  
   dp.fit$traceadd$incidence <- dp.fit$traceadd$incidence[-(1:toburn)]
-  time <- Sys.time() - start + searchspace$time
+  dp.fit$trace <- dp.fit$trace[-(1:toburn)]
+  ndags <- length(dp.fit$trace)
+  weights <- numeric(ndags)
+
+  for(k in 1:ndags) {
+    dag <- dp.fit$traceadd$incidence[[k]]
+    target_score <- DPscoreDAG(
+      param = Score,
+      dag = dag
+    )
+
+    proposal_score <- dp.fit$trace[k]
+    weights[k] <- target_score - proposal_score
+  }
+
+  dp.fit$weights <- weights - logSumExp(weights)  # normalize weights
+  end <- Sys.time()
+  time2 <- end - inter
+  time <- end - start + searchspace$time
   dp.fit$time <- as.numeric(time, units = "secs")
-  
+  dp.fit$time2 <- as.numeric(time2, units = "secs")
   return(dp.fit)
 }
 bge.partition.mcmc <- function(searchspace, alpha = 0.05, 

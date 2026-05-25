@@ -1,7 +1,7 @@
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Sample DAGs with BiDAG
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-sampleDAGs <- function(inData, scoreObject, nDigraphs = 50, seed=101, dname="", ...){
+sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, seed=101, dname="", ...){
   scoreObject$data = inData
   scoreObject$nodeslabels = colnames(inData)
 
@@ -44,9 +44,26 @@ sampleDAGs <- function(inData, scoreObject, nDigraphs = 50, seed=101, dname="", 
     ## extract the collection of sampled DAGs
     sampledDAGs <- partitionSample$traceadd$incidence 
     DAGscores <- partitionSample$trace # extract their scores
-    
-#    sampledDAGs <- orderSample$traceadd$incidence
-#    DAGscores <- orderSample$trace
+    if(weighted) {
+      ndags <- length(partitionSample$trace)
+      weights <- numeric(ndags)
+      target_scores <- numeric(ndags)
+
+      for(k in 1:ndags) {
+        dag <- partitionSample$traceadd$incidence[[k]]
+        target_score <- DPscoreDAG(
+          param = scoreObject,
+          dag = dag
+        )
+        target_scores[k] <- target_score
+        proposal_score <- partitionSample$trace[k]
+        weights[k] <- target_score - proposal_score
+      }
+      partitionSample$weights <- weights - logSumExp(weights)  # normalize weights
+      ind <- sample(seq_along(sampledDAGs), size = nDigraphs, replace = TRUE, prob = exp(partitionSample$weights))
+      sampledDAGs = sampledDAGs[ind]
+      DAGscores <- target_scores[ind]
+    }
     
     ## save the the collection of sampled DAGs and their scores to an .RData file
     save(sampledDAGs, DAGscores, scoreObject,
@@ -244,7 +261,7 @@ plotEffects <- function(effects4plot,
         } else{
           if(!(roundeffs[ii,jj]==0 || roundeffs[ii,jj]==1) ){
             d <- density(effsarray[ii,jj,])
-            setPlot(d, xlim=c(-xmargs[1] + minx, xmargs[2] + maxx), col="dodgerblue")
+            setPlot(d, xlim=c(-2,2), col="dodgerblue")
             testquantiles <- quantile(effsarray[ii,jj,], c(sigcutoff, 1-sigcutoff))
             if(testquantiles[1]>0 || testquantiles[2]<0){
               u <- par("usr") # The coordinates of the plot area
@@ -256,7 +273,7 @@ plotEffects <- function(effects4plot,
             text( (u[1]+u[2])/2,(u[3]+u[4])/2, 
                   format(round(roundeffs[ii,jj], 2), nsmall = 2) )
             } else {
-              setPlot(xlim=c(-xmargs[1] + minx, xmargs[2] + maxx), ylim=c(0,1), col="darkorchid4")
+              setPlot(xlim=c(-2,2), ylim=c(0,1), col="darkorchid4")
               text(0, 0.5, roundeffs[ii,jj])
             }
         }

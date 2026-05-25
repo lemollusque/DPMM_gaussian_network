@@ -63,6 +63,7 @@ foreach(
   sampleDAGs(
     inData = sachs.data,
     scoreObject = DP.searchspace$score,
+    weighted = TRUE,
     nDigraphs = nDAGs,
     seed = seednumber
   )
