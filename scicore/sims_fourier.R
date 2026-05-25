@@ -38,7 +38,7 @@ dp_fits <- 2
 param_grid <- expand.grid(
   N = c(100),
   n = 10,
-  d = c(0, 1, 2, 5, 10),
+  d = c(0, 0.5, 1),
   bge.par = 0.01
 )
 
