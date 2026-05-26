@@ -256,7 +256,7 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             title_text = "BGe Estimated Distribution of Causal Effects\n")
 dev.off()
 
-pdf("Wasserstein.pdf", width = 6, height = 6)
+pdf("BGeWasserstein.pdf", width = 6, height = 6)
 # compare with true effects
 Wdist <- plotCompareEffects(
   effects4plot = data4plot$alleffs,
