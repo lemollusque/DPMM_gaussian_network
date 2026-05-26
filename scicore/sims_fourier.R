@@ -117,7 +117,7 @@ with_progress({
     myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
     trueDAG <- as(myDAG, "matrix")
     truegraph <- 1*(trueDAG != 0)
-    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T, concentration = 0.1)
+    data <- Fou_nldata(truegraph, N, lambda = d, noise.sd = 1, standardize = T)
     
     if (is.null(colnames(data))) {
       colnames(data) <- paste0("v", seq_len(ncol(data)))
@@ -128,6 +128,7 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
+      temperature = 2,
       dp_iter = dp_iter,
       dp_burnin = burnin,
       dp_n_sample = L,
