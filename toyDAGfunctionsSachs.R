@@ -325,12 +325,12 @@ plotCompareEffects <- function(effects4plot,
   maxx <- max(apply(effsarray, c(1,2), max))
   
   Wdist <- matrix(NA_real_, nn, nn)
-  
-  for (i in seq_len(nn)) {
-    for (j in seq_len(nn)) {
-      Wdist[i, j] <- wasserstein1d_empirical(
-        truearray[i, j, ],
-        effsarray[i, j, ]
+    
+  for (ii in sortlabs) {
+    for (jj in sortlabs) {
+      Wdist[ii, jj] <- wasserstein1d_empirical(
+        truearray[ii, jj, ],
+        effsarray[ii, jj, ]
       )
     }
   }
@@ -357,29 +357,45 @@ plotCompareEffects <- function(effects4plot,
       } else {
         heat_id <- max(1, ceiling(Wscaled[ii, jj] * 100))
         heat_col <- adjustcolor(heatcols[heat_id], alpha.f = 0.45)
-        if (!(roundeffs[ii, jj] == 0 || roundeffs[ii, jj] == 1)) {
-          d <- density(effsarray[ii, jj, ])
+
+        vals <- effsarray[ii, jj, ]
+        if (sd(vals) > 1e-8) {
+          d <- density(vals)
           setPlot(d, xlim = c(-2, 2), col = "dodgerblue")
           u <- par("usr")
-          rect(u[1], u[3], u[2], u[4], col = heat_col, border = NA)
+          rect(u[1], u[3], u[2], u[4],
+              col = heat_col,
+              border = NA)
+
           polygon(d, col = "dodgerblue", border = "dodgerblue")
           abline(v = 0, col = "firebrick3", lty = 2)
-          u <- par("usr")
           text(
             (u[1] + u[2]) / 2,
             (u[3] + u[4]) / 2,
             paste0(
-              "W=", format(round(Wdist[ii, jj], 2), nsmall = 2)
+              "W=",
+              format(round(Wdist[ii, jj], 2), nsmall = 2)
             )
           )
+
         } else {
-          setPlot(xlim = c(-2, 2), ylim = c(0, 1), col = "darkorchid4")
+          setPlot(
+            xlim = c(-2, 2),
+            ylim = c(0, 1),
+            col = "darkorchid4"
+          )
           u <- par("usr")
-          rect(u[1], u[3], u[2], u[4], col = heat_col, border = NA)
+          rect(
+            u[1], u[3], u[2], u[4],
+            col = heat_col,
+            border = NA
+          )
           text(
-            0, 0.5,
+            0,
+            0.5,
             paste0(
-              "W=", format(round(Wdist[ii, jj], 2), nsmall = 2)
+              "W=",
+              format(round(Wdist[ii, jj], 2), nsmall = 2)
             )
           )
         }
