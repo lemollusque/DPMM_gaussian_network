@@ -225,7 +225,18 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             title_text = "Estimated Mixture Distribution of Causal Effects\n")
 dev.off()
 
+pdf("Wasserstein.pdf", width = 6, height = 6)
+# compare with true effects
+Wdist <- plotCompareEffects(
+  effects4plot = data4plot$alleffs,
+  trueEffects = trueSamples,
+  sortlabs = 1:n,
+  title_text = "Estimated Effects with Entrywise Wasserstein Distance\n"
+)
+dev.off()
 
+#######################################################################
+# bge
 
 for (seednumber in batch) { 
   print(paste("Seed is", seednumber)) 
@@ -245,10 +256,12 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             title_text = "BGe Estimated Distribution of Causal Effects\n")
 dev.off()
 
+pdf("Wasserstein.pdf", width = 6, height = 6)
 # compare with true effects
 Wdist <- plotCompareEffects(
   effects4plot = data4plot$alleffs,
   trueEffects = trueSamples,
   sortlabs = 1:n,
-  title_text = "Estimated Effects with Entrywise Wasserstein Distance\n"
+  title_text = "BGe Estimated Effects with Entrywise Wasserstein Distance\n"
 )
+dev.off()
