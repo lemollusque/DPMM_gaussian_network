@@ -23,7 +23,7 @@ sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
 
 bge.par = 0.01
-dual <- TRUE 
+start_type = "full"
 # dirichlet params
 dp_iter <- 200
 burnin <- 100
@@ -40,7 +40,7 @@ dp_usrpar <- list(
   dp_fits = dp_fits
 )
 
-init.seed <- 100
+init.seed <- 234
 iter <- 20
 
 dir.create("Sachs/parallel_searchspaces", showWarnings = FALSE, recursive = TRUE)
@@ -93,7 +93,7 @@ with_progress({
     
     DP.searchspace <- set.searchspace(
       sachs.data,
-      dual,
+      start_type,
       "DP",
       usrpar = dp_usrpar
     )

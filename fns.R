@@ -320,15 +320,12 @@ test_compare_dp_vs_bge <- function(usr_score_param,
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Run MCMC
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
+set.searchspace <- function(data, start_type, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
   startspace <- NULL
 
-  if(dual) {
-    cor_mat <- cor(data)
-    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
-  }
-  else{
+  # compute startspace
+  if(start_type == "pc") {
     cor_mat <- cor(data)
     pc.skel <- pcalg::skeleton(suffStat = list(C = cor_mat, 
                   n = nrow(data)), indepTest = pcalg::gaussCItest, alpha = alpha, 
@@ -336,6 +333,14 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
                   verbose = FALSE)
     g <- pc.skel@graph
     startspace <- 1 * (graph2m(g))
+  }
+  if(start_type == "dual") {
+    cor_mat <- cor(data)
+    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+  }  
+  if(start_type == "full") {
+    startspace <- 1 - diag(ncol(data))
+    dimnames(startspace) <- list(colnames(data), colnames(data))
   }
     
   if(method == "DP") {

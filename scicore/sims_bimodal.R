@@ -25,9 +25,9 @@ source("dao.R")
 source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
-init.seed <- 100
+init.seed <- 234
 iter <- 100
-dual <- TRUE
+start_type = "dual"
 
 # dirichlet params
 dp_iter <- 200
@@ -164,8 +164,8 @@ with_progress({
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace(data, dual, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace(data, dual, "bge", bge.par)
+    DP.searchspace <- set.searchspace(data, start_type, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace(data, start_type, "bge", bge.par)
     
     iter_results <- data.frame()
     
