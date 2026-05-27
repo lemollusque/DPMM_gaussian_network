@@ -328,6 +328,15 @@ set.searchspace <- function(data, dual, method, par = 1, alpha = 0.05, usrpar = 
     cor_mat <- cor(data)
     startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
   }
+  else{
+    cor_mat <- cor(data)
+    pc.skel <- pcalg::skeleton(suffStat = list(C = cor_mat, 
+                  n = nrow(data)), indepTest = pcalg::gaussCItest, alpha = alpha, 
+                  labels = colnames(data), method = "stable", 
+                  verbose = FALSE)
+    g <- pc.skel@graph
+    startspace <- 1 * (graph2m(g))
+  }
     
   if(method == "DP") {
     # dirichlet params
