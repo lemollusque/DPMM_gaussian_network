@@ -639,11 +639,13 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
 
   data
 }
-bimodal_err <- function(n, var, sep_sd=2) {
+bimodal_err <- function(n1, n2, var, sep_sd=2) {
   sd0 <- sqrt(var)
   shift <- sep_sd * sd0
-  comp <- sample(c(-1, 1), size=n, replace=TRUE)
-  rnorm(n, mean=comp * shift, sd=sd0)
+  c(
+    rnorm(n1, mean = -shift, sd = sd0),
+    rnorm(n2, mean =  shift, sd = sd0)
+  )
 }
 
 simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
@@ -656,6 +658,9 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
   model <- corr(g)
   B <- model$B
   O <- model$O
+
+  n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
+  n2 <- n - n1
 
   # p = |variables|
   p <- ncol(B)
@@ -690,7 +695,7 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
     
     # additive error
     if (i == chosen_ord) {
-      X[, i] <- X[, i] + bimodal_err(n, O[i], sep_sd=bimodal_sep)
+      X[, i] <- X[, i] + bimodal_err(n1, n2, O[i], sep_sd=bimodal_sep)
     } else {
       X[, i] <- X[, i] + err(n, O[i])
     }
@@ -715,6 +720,8 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
     return(list(
       data = X,
       model = model,
+      n1 = n1,
+      n2 = n2,
       raw_mean = raw_mean,
       raw_sd = raw_sd,
       bimodal_node = chosen_original,
