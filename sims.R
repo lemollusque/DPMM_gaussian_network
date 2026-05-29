@@ -223,20 +223,29 @@ medians <- results_small %>%
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
-  geom_jitter(width = 0.15, alpha = 0.7, size = 1.2) +
-  geom_text(
-    data = medians,
-    aes(x = method, y = median_ESHD, label = round(median_ESHD,2)),
-    color = "black",
-    vjust = -0.7,
-    size = 3
-  ) +
+  geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
+  # geom_text(
+  #   data = medians,
+  #   aes(x = method, y = median_ESHD, label = round(median_ESHD,2)),
+  #   color = "black",
+  #   vjust = -0.7,
+  #   size = 3
+  # ) +
   
   labs(x = NULL, y = "E-SHD") +
-  facet_grid(N ~ d, scales = "free_y") +
+  facet_grid(
+    N ~ d,
+    scales = "free_y",
+    labeller = labeller(
+      N = function(x) paste("N =", x),
+      d = function(x) paste("d =", x)
+    )
+  ) +
   theme_bw() +
   theme(
     legend.position = "bottom",
     axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    panel.grid.major.x = element_blank()
+    panel.grid.major.x = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
   )
