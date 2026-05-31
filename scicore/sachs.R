@@ -27,8 +27,8 @@ start_type = "full"
 # dirichlet params
 dp_iter <- 200
 burnin <- 100
-L <- 10
-dp_fits <- 1
+L <- 20
+dp_fits <- 5
 
 # dp settings
 dp_usrpar <- list(
