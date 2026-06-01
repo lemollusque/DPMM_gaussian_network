@@ -28,7 +28,7 @@ source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
 set.seed(7)
-N = 500
+N = 100
 n = 10
 # generate graph
 myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
