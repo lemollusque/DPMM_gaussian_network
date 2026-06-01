@@ -69,3 +69,55 @@ plot(
   vertex.label.cex = 0.8,
   edge.width = 1.5
 )
+
+
+
+
+makeTrueDAGSamples <- function(truegraph, nDAGs, seed = 101, dname = "",
+                               scoreObject, outdir = "./saveout") {
+  
+  if (!dir.exists(outdir)) {
+    dir.create(outdir, recursive = TRUE)
+  }
+  
+  n <- ncol(truegraph)
+  
+  sampledDAGs <- replicate(
+    nDAGs + 1,
+    truegraph,
+    simplify = FALSE
+  )
+  
+  sampledDAGs <- lapply(sampledDAGs, function(A) {
+    A <- as.matrix(A)
+    colnames(A) <- rownames(A) <- colnames(scoreObject$data)
+    A
+  })
+  
+  DAGscores <- rep(NA_real_, length(sampledDAGs))
+  
+  save(
+    sampledDAGs,
+    DAGscores,
+    scoreObject,
+    file = file.path(outdir, paste0("dagdraw", n, "seed", seed, dname, ".RData"))
+  )
+}
+labels4plot <- colnames(sachs.data) 
+nNodes <- length(labels4plot)
+bge.searchspace <- set.searchspace(sachs.data, TRUE, "bge", 0.01)
+nDAGs <- 50
+makeTrueDAGSamples( truegraph = g, 
+                    nDAGs = nDAGs, seed = 101, 
+                    scoreObject = bge.searchspace$score, 
+                    outdir = "./Sachs/saveout" ) 
+
+computeEffects(
+  n = nNodes,
+  seed = 101
+)
+data4plot <- loadsamples(seeds=c(101), nn=nNodes)
+
+
+graph2plot <- dagviz(data4plot$alldigraphs, style_mat = matrix(1, 11, 11), title_text = "")
+rsvg_png(charToRaw(export_svg(graph2plot)), "Sachs/SachstrueDAG.png", width = 4000)
