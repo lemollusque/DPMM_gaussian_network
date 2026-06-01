@@ -103,11 +103,13 @@ makeTrueDAGSamples <- function(truegraph, nDAGs, seed = 101, dname = "",
     file = file.path(outdir, paste0("dagdraw", n, "seed", seed, dname, ".RData"))
   )
 }
+truecpdag = pcalg::dag2cpdag(trueDAG)
+truecpdag <- 1 * (truecpdag)
 labels4plot <- colnames(sachs.data) 
 nNodes <- length(labels4plot)
 bge.searchspace <- set.searchspace(sachs.data, TRUE, "bge", 0.01)
 nDAGs <- 50
-makeTrueDAGSamples( truegraph = g, 
+makeTrueDAGSamples( truegraph = trueDAG, 
                     nDAGs = nDAGs, seed = 101, 
                     scoreObject = bge.searchspace$score, 
                     outdir = "./Sachs/saveout" ) 
