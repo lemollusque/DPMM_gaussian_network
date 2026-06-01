@@ -24,7 +24,7 @@ insertSource("fns.R", package = "BiDAG")
 sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
 
-trueDAG <- read.csv("Sachs/sachs.csv")
+trueDAG <- read.csv("Sachs/sachs_dag_with_missing.csv")
 trueDAG <- as.matrix(trueDAG)
 
 # plot data
@@ -41,14 +41,17 @@ my_smooth <- function(data, mapping, ...) {
 
 ggpairs(
   sachs.data,
-  upper = list(continuous = wrap("cor", size = 4)),
+  upper = list(continuous = wrap("cor", size = 3, digits = 2)),
   lower = list(continuous = my_smooth),
   diag = list(continuous = wrap("barDiag", bins = 30, alpha = 0.5))
 ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(
+    axis.text = element_text(size = 6),
+    axis.title = element_text(size = 7),
+    strip.text = element_text(size = 8)
+  )
 
-trueDAG <- read.csv("Sachs/sachs.csv")
-trueDAG <- as.matrix(trueDAG)
 
 # plot DAG
 g <- graph_from_adjacency_matrix(
