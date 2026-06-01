@@ -191,7 +191,7 @@ foreach(
   
   DP.searchspace <- set.searchspace(
     data,
-    TRUE,
+    "dual",
     "DP",
     usrpar = dp_usrpar
   )
