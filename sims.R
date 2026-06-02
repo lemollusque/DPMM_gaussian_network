@@ -1,30 +1,37 @@
-library(BiDAG)
-library(matrixStats)
-library(dirichletprocess)
-library(dplyr)
-library(ggplot2)
-library(foreach)
-library(doFuture)
-library(future)
-library(parallelly)
-library(mclust)
-library(progressr)
-library(doRNG)
-library(mvtnorm)
+packages <- c(
+  "BiDAG",
+  "dirichletprocess",
+  "dplyr",
+  "ggplot2",
+  "foreach",
+  "doFuture",
+  "future",
+  "progressr",
+  "doRNG",
+  "mvtnorm"
+)
+
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
 
 source("comparison_algs.R")
 source("dualPC.R")
+source("Fourier_fns.R")
 source("dao.R")
 source("fns.R")
 insertSource("fns.R", package = "BiDAG")
 
-init.seed <- 100
-iter <- 7
+init.seed <- 234
+iter <- 100
 start_type = "dual"
 
 # dirichlet params
 dp_iter <- 100
-burnin <- 80
+burnin <- 50
 L <- 10
 dp_fits <- 1
 
@@ -56,7 +63,7 @@ make_file_name <- function(N, n, d, bge.par, i) {
   )
 }
 
-n_cores <- max(1, availableCores() - 1)
+n_cores <- max(1, availableCores()-1)
 
 plan(multisession, workers = n_cores)
 registerDoFuture()
@@ -75,9 +82,9 @@ with_progress({
     
     source("comparison_algs.R")
     source("dualPC.R")
-    source("Fourier_fns.R")
     source("dao.R")
     source("fns.R")
+    source("Fourier_fns.R")
     insertSource("fns.R", package = "BiDAG")
     
     # set params
@@ -123,19 +130,6 @@ with_progress({
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
     
-    detectable_truegraph <- make_detectable_truegraph_bimodal(
-      truegraph = truegraph,
-      R1 = sim$model1$R,
-      R2 = sim$model2$R,
-      N = N,
-      n1 = sim$n1,
-      n2 = sim$n2,
-      alpha = 0.05,
-      power = 0.8,
-      rule = "either"
-    )   
-    
-    
     
     # dp settings
     dp_usrpar <- list(
@@ -165,22 +159,22 @@ with_progress({
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
+      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
     )
     
     iter_results$N <- N
@@ -203,7 +197,6 @@ with_progress({
   }
 })
 
-future::plan(sequential)
 
 files <- list.files("Sims", pattern = "\\.rds$", full.names = TRUE)
 results <- bind_rows(lapply(files, readRDS))
@@ -249,3 +242,9 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
     strip.background = element_blank(),
     strip.text = element_text(face = "bold")
   )
+
+
+
+
+
+
