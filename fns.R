@@ -442,19 +442,33 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   dp.fit$traceadd$incidence <- dp.fit$traceadd$incidence[-(1:toburn)]
   dp.fit$trace <- dp.fit$trace[-(1:toburn)]
   ndags <- length(dp.fit$trace)
+
+  score_cache <- new.env(parent = emptyenv())
+  dag_key <- function(dag) {
+    paste(as.integer(dag), collapse = "")
+  }
   weights <- numeric(ndags)
-
-  for(k in 1:ndags) {
+  target_scores <- numeric(ndags)
+  
+  for (k in seq_len(ndags)) {
     dag <- dp.fit$traceadd$incidence[[k]]
-    target_score <- DPscoreDAG(
-      param = Score,
-      dag = dag
-    )
-
+    key <- dag_key(dag)
+    
+    if (exists(key, envir = score_cache, inherits = FALSE)) {
+      target_score <- get(key, envir = score_cache)
+    } else {
+      target_score <- DPscoreDAG(
+        param = Score,
+        dag = dag
+      )
+      assign(key, target_score, envir = score_cache)
+    }
+    
     proposal_score <- dp.fit$trace[k]
+    
+    target_scores[k] <- target_score
     weights[k] <- target_score - proposal_score
   }
-
   dp.fit$weights <- weights - logSumExp(weights)  # normalize weights
   end <- Sys.time()
   time2 <- end - inter

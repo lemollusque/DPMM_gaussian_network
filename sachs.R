@@ -24,7 +24,7 @@ insertSource("fns.R", package = "BiDAG")
 sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
 
-trueDAG <- read.csv("Sachs/sachs_dag_with_missing.csv")
+trueDAG <- read.csv("Sachs/sachs.csv")
 trueDAG <- as.matrix(trueDAG)
 
 set.seed(100)

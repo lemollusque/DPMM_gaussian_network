@@ -23,7 +23,7 @@ sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
 
 bge.par = 0.01
-start_type = "full"
+start_type = "dual"
 # dirichlet params
 dp_iter <- 200
 burnin <- 100
