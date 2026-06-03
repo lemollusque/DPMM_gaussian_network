@@ -46,17 +46,30 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
     DAGscores <- partitionSample$trace # extract their scores
     if(weighted) {
       ndags <- length(partitionSample$trace)
+      score_cache <- new.env(parent = emptyenv())
+      dag_key <- function(dag) {
+        paste(as.integer(dag), collapse = "")
+      }
       weights <- numeric(ndags)
       target_scores <- numeric(ndags)
-
-      for(k in 1:ndags) {
+      
+      for (k in seq_len(ndags)) {
         dag <- partitionSample$traceadd$incidence[[k]]
-        target_score <- DPscoreDAG(
-          param = scoreObject,
-          dag = dag
-        )
-        target_scores[k] <- target_score
+        key <- dag_key(dag)
+        
+        if (exists(key, envir = score_cache, inherits = FALSE)) {
+          target_score <- get(key, envir = score_cache)
+        } else {
+          target_score <- DPscoreDAG(
+            param = scoreObject,
+            dag = dag
+          )
+          assign(key, target_score, envir = score_cache)
+        }
+        
         proposal_score <- partitionSample$trace[k]
+        
+        target_scores[k] <- target_score
         weights[k] <- target_score - proposal_score
       }
       partitionSample$weights <- weights - logSumExp(weights)  # normalize weights
