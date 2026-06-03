@@ -27,20 +27,28 @@ init.seed <- 100
 iter <- 10
 dual <- TRUE
 
-n <- 10
-shift_sizes <- c(0, 1,2,5)
-N_samples <- c(100)
+sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
+sachs.data <- as.matrix(sachs.data)
 
-dp_fits <- 1
-dp_iter <- 500
+N <- nrow(sachs.data)
+n <- ncol(sachs.data)
+
+bge.par = 0.01
+start_type = "dual"
+# dirichlet params
+dp_iter <- 200
+burnin <- 100
+L <- 20
+dp_fits <- 5
+
+
 
 alpha_grid <- list(
   alpha_prior=c(2,4)
 )
 
 g0_grid <- list(
-  
-  list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n)*0.5)
+  list(mu0 = rep(0, n), kappa0 = 0.1, nu = n+5, Lambda = diag(n))
 )
 
 # --------------------------------------------------
@@ -163,26 +171,15 @@ with_progress({
     job_seed <- make_job_seed(init.seed, k)
     set.seed(job_seed)
     
-    myDAG <- pcalg::randomDAG(n, prob = 0.2, lB = 1, uB = 2) 
-    trueDAG <- as(myDAG, "matrix")
-    truegraph <- 1 * (trueDAG != 0)
-    
-    data <- simulate_bimodal_one_node(t(truegraph), n=N, bimodal_sep=shift_sizes)
-    
-    
-    if (is.null(colnames(data))) {
-      colnames(data) <- paste0("v", seq_len(ncol(data)))
-    }
-    
     iter_results <- data.frame()
     
     # full DP
     for (f in seq_len(dp_fits)) {
       dp <- DirichletProcessMvnormal(
-        data,
+        sachs.data,
         g0Priors = g0_prior,
         alphaPriors = alpha_prior,
-        numInitialClusters = 10)
+        numInitialClusters = 1)
       dp <- Fit(dp, dp_iter, progressBar = FALSE)
       
       fit_results <- dp_nclusters_iters(dp)
