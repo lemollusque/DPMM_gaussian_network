@@ -55,6 +55,10 @@ logMeanExp <- function(x) {
   m <- max(x)
   m + log(mean(exp(x - m)))
 }
+logSumExp <- function(x) {
+  m <- max(x)
+  m + log(sum(exp(x - m)))
+}
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
                                              dp_iter = 100,
