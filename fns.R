@@ -447,33 +447,30 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   dp.fit$trace <- dp.fit$trace[-(1:toburn)]
   ndags <- length(dp.fit$trace)
 
-  score_cache <- new.env(parent = emptyenv())
+  # compute weights for all sampled unique DAGs
   dag_key <- function(dag) {
-    paste(as.integer(dag), collapse = "")
+    paste(c(dim(dag), as.integer( 1 * as(dag, "matrix"))), collapse = "_")
   }
-  weights <- numeric(ndags)
-  target_scores <- numeric(ndags)
-  
-  for (k in seq_len(ndags)) {
-    dag <- dp.fit$traceadd$incidence[[k]]
-    key <- dag_key(dag)
-    
-    if (exists(key, envir = score_cache, inherits = FALSE)) {
-      target_score <- get(key, envir = score_cache)
-    } else {
-      target_score <- DPscoreDAG(
-        param = Score,
-        dag = dag
-      )
-      assign(key, target_score, envir = score_cache)
-    }
-    
-    proposal_score <- dp.fit$trace[k]
-    
-    target_scores[k] <- target_score
-    weights[k] <- target_score - proposal_score
+  dags <- dp.fit$traceadd$incidence
+  keys <- vapply(dags, dag_key, character(1))
+  unique_keys <- unique(keys)
+  first_idx <- match(unique_keys, keys)
+  unique_scores <- numeric(length(unique_keys))
+  names(unique_scores) <- unique_keys
+
+  for (u in seq_along(unique_keys)) {
+    dag <- dags[[first_idx[u]]]
+
+    unique_scores[u] <- DPscoreDAG(
+      param = Score,
+      dag = dag
+    )
   }
-  dp.fit$weights <- weights - logSumExp(weights)  # normalize weights
+
+  target_scores <- unname(unique_scores[keys])
+  weights <- target_scores - dp.fit$trace
+
+  dp.fit$weights <- weights - logSumExp(weights)
   end <- Sys.time()
   time2 <- end - inter
   time <- end - start + searchspace$time
