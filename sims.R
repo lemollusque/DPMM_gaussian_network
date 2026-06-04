@@ -30,8 +30,8 @@ iter <- 100
 start_type = "dual"
 
 # dirichlet params
-dp_iter <- 100
-burnin <- 50
+dp_iter <- 200
+burnin <- 100
 L <- 10
 dp_fits <- 1
 
@@ -130,6 +130,19 @@ with_progress({
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
     
+    detectable_truegraph <- make_detectable_truegraph_bimodal(
+      truegraph = truegraph,
+      R1 = sim$model1$R,
+      R2 = sim$model2$R,
+      N = N,
+      n1 = sim$n1,
+      n2 = sim$n2,
+      alpha = 0.05,
+      power = 0.8,
+      rule = "either"
+    )   
+    
+    
     
     # dp settings
     dp_usrpar <- list(
@@ -139,12 +152,12 @@ with_progress({
       dp_burnin = burnin,
       dp_n_sample = L,
       dp_fits = dp_fits,
-      alphaPriors = c(8,4),
+      alphaPriors = c(2,4),
       g0Priors = function(n) {
         list(mu0 = rep(0, n), 
              kappa0 = 0.1, 
              nu = n+5, 
-             Lambda = diag(n)*0.5)
+             Lambda = diag(n))
       },
       numInitialClusters = min(20, ceiling(sqrt(N))),
       progressBar = T
@@ -159,22 +172,22 @@ with_progress({
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
     )
     
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
+      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
     )
     
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
     )
     
     iter_results$N <- N
@@ -196,6 +209,8 @@ with_progress({
     p(sprintf("done %d", k))
   }
 })
+
+
 
 
 files <- list.files("Sims", pattern = "\\.rds$", full.names = TRUE)

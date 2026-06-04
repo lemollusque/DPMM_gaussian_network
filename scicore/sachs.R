@@ -22,11 +22,13 @@ insertSource("fns.R", package = "BiDAG")
 sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
 
+N <- nrow(sachs.data)
+
 bge.par = 0.01
 start_type = "dual"
 # dirichlet params
-dp_iter <- 200
-burnin <- 100
+dp_iter <- 300
+burnin <- 150
 L <- 20
 dp_fits <- 5
 
@@ -35,6 +37,14 @@ dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
   dp_iter = dp_iter,
+  alphaPriors = c(2,4),
+  g0Priors = function(n) {
+    list(mu0 = rep(0, n), 
+          kappa0 = 0.1, 
+          nu = n+5, 
+          Lambda = diag(n))
+  },
+  numInitialClusters = min(20, ceiling(sqrt(N))),
   dp_burnin = burnin,
   dp_n_sample = L,
   dp_fits = dp_fits
