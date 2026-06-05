@@ -8,7 +8,9 @@ packages <- c(
   "future",
   "progressr",
   "doRNG",
-  "mvtnorm"
+  "mvtnorm",
+  "BayesFactor",
+  "matrixStats"
 )
 
 for (pkg in packages) {

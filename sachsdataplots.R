@@ -14,6 +14,8 @@ library(mvtnorm)
 library(readxl)
 library(GGally)
 library(igraph)
+library(BayesFactor)
+library(matrixStats)
 
 source("comparison_algs.R")
 source("dualPC.R")

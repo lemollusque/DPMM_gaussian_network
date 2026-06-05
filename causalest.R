@@ -12,6 +12,8 @@ library(mclust)
 library(progressr)
 library(doRNG)
 library(mvtnorm)
+library(BayesFactor)
+library(matrixStats)
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot

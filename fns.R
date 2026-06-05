@@ -51,14 +51,6 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, vars 
   membershipp_list
 }
 #----------------------  BiDAG ----------------------------------
-logMeanExp <- function(x) {
-  m <- max(x)
-  m + log(mean(exp(x - m)))
-}
-logSumExp <- function(x) {
-  m <- max(x)
-  m + log(sum(exp(x - m)))
-}
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
                                              dp_iter = 100,
@@ -308,7 +300,7 @@ DPscoreDAG <- function(param, dag) {
     }
     dag_scores[l] <- curr_score
   }
-  logMeanExp(dag_scores)
+  logMeanExpLogs (dag_scores)
 }
 #----------------------  test functions ----------------------------------
 test_dag_score_equivalence <- function(usr_score_param,
