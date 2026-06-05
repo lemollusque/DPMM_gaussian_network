@@ -141,7 +141,6 @@ usrscoreparameters <- function(initparam,
       K = ncol(membershipp)
       Nk <- numeric(K)
       means <- vector("list", K)
-      covs <- vector("list", K)
       TN <- vector("list", K)
       awpN <- numeric(K)
       constscorefact <- numeric(K)
