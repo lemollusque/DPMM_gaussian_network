@@ -29,7 +29,6 @@ insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 234
 iter <- 100
-dp_fitspace = "full"
 
 # dirichlet params
 dp_iter <- 200
@@ -134,6 +133,21 @@ with_progress({
     
     detectable_truegraph <- t(sim$detectable_truegraph)
     
+    
+    iter_results <- data.frame()
+    
+    # save bge results
+    bge.searchspace <- set.searchspace(data, "bge", bge.par)
+    bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
+    iter_results <- compare_results(
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
+    )
+    bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
+    iter_results <- compare_results(
+      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
+    )
+    
+    # save dp results
     # dp settings
     dp_usrpar <- list(
       pctesttype = "bge",
@@ -142,7 +156,38 @@ with_progress({
       dp_burnin = burnin,
       dp_n_sample = L,
       dp_fits = dp_fits,
-      dp_fitspace = dp_fitspace,
+      dp_fitspace = "full",
+      alphaPriors = c(2,4),
+      g0Priors = function(n) {
+        list(mu0 = rep(0, n), 
+             kappa0 = 0.1, 
+             nu = n+5, 
+             Lambda = diag(n))
+      },
+      numInitialClusters = min(20, ceiling(sqrt(N))),
+      progressBar = T
+    )
+
+    DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
+    dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
+    iter_results <- compare_results(
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
+    )
+    dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
+    iter_results <- compare_results(
+      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
+    )
+    
+    # save dp sub results
+    # dp settings
+    dp_usrpar <- list(
+      pctesttype = "bge",
+      am = bge.par,
+      dp_iter = dp_iter,
+      dp_burnin = burnin,
+      dp_n_sample = L,
+      dp_fits = dp_fits,
+      dp_fitspace = "dual",
       alphaPriors = c(2,4),
       g0Priors = function(n) {
         list(mu0 = rep(0, n), 
@@ -154,31 +199,14 @@ with_progress({
       progressBar = T
     )
     
-    # search spaces
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace(data, "bge", bge.par)
-    
-    iter_results <- data.frame()
-    
-    
-    bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
-    iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
-    )
-    
-    bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
-    iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
-    )
-    
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP dual, partition"), iter_results,  detectable_truegraph
     )
-    
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP dual, order"), iter_results,  detectable_truegraph
     )
     
     iter_results$N <- N
@@ -208,7 +236,7 @@ files <- list.files("Sims", pattern = "\\.rds$", full.names = TRUE)
 results <- bind_rows(lapply(files, readRDS))
 
 # plots resutts
-keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")
+# keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")
 
 results_small <- results %>%
   filter(graph == "pattern", method %in% keep_methods) 
