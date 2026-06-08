@@ -132,20 +132,8 @@ with_progress({
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
     
-    detectable_truegraph <- make_detectable_truegraph_bimodal(
-      truegraph = truegraph,
-      R1 = sim$model1$R,
-      R2 = sim$model2$R,
-      N = N,
-      n1 = sim$n1,
-      n2 = sim$n2,
-      alpha = 0.05,
-      power = 0.8,
-      rule = "either"
-    )   
-    
-    
-    
+    detectable_truegraph <- t(sim$detectable_truegraph)
+ 
     # dp settings
     dp_usrpar <- list(
       pctesttype = "bge",

@@ -132,13 +132,7 @@ with_progress({
       colnames(data) <- paste0("v", seq_len(ncol(data)))
     }
     
-    detectable_truegraph <- make_detectable_truegraph(
-      truegraph = truegraph,
-      R = sim$model$R,
-      N = N,
-      alpha = 0.05,
-      power = 0.8
-    )
+    detectable_truegraph <- t(sim$detectable_truegraph) 
     
     # dp settings
     dp_usrpar <- list(

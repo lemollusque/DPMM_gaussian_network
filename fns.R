@@ -362,8 +362,6 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
   cor_mat <- cor(data)
   startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
 
-  
-    
   if(method == "DP") {
     # dirichlet params
     if (is.null(usrpar$alphaPriors)) {
@@ -415,7 +413,7 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
       fitspace <- 1 - diag(ncol(data))
       dimnames(fitspace) <- list(colnames(data), colnames(data))
     }
-    
+
     # prepare dirichlet gamma list
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
@@ -583,39 +581,11 @@ make_detectable_truegraph <- function(truegraph, R, N,
   dimnames(detectable) <- dimnames(truegraph)
   detectable
 }
-make_detectable_truegraph_bimodal <- function(truegraph,
-                                              R1, R2,
-                                              N,
-                                              n1, n2,
-                                              alpha = 0.05,
-                                              power = 0.8,
-                                              rule = c("either", "both")) {
-  rule <- match.arg(rule)
-
-  det1 <- make_detectable_truegraph(
-    truegraph = truegraph,
-    R = R1,
-    N = n1,
-    alpha = alpha,
-    power = power
-  )
-
-  det2 <- make_detectable_truegraph(
-    truegraph = truegraph,
-    R = R2,
-    N = n2,
-    alpha = alpha,
-    power = power
-  )
-
-  detectable <- switch(
-    rule,
-    either = 1 * ((det1 + det2) > 0),
-    both   = 1 * ((det1 == 1) & (det2 == 1))
-  )
-
-  dimnames(detectable) <- dimnames(truegraph)
-  detectable
+B_to_R <- function(B, O) {
+  p <- ncol(B)
+  IB <- solve(diag(p) - B)
+  S <- IB %*% diag(O) %*% t(IB)
+  cov2cor(S)
 }
 simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
                              return_model = FALSE) {
@@ -624,6 +594,17 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
 
   n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
   n2 <- n - n1
+
+  det1 <- make_detectable_truegraph(truegraph = dag, R = model1$R,  N = n1)
+  det2 <- make_detectable_truegraph(truegraph = dag, R = model2$R,  N = n2)
+
+  detectable <- 1 * ((det1 + det2) > 0)
+
+  model1$B <- model1$B * detectable
+  model2$B <- model2$B * detectable
+
+  model1$R <- B_to_R(model1$B, model1$O)
+  model2$R <- B_to_R(model2$B, model2$O)
 
   X1 <- rmvt(n1, sigma = model1$R, df = df)
   X2 <- rmvt(n2, sigma = model2$R, df = df)
@@ -649,7 +630,8 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
       n1 = n1,
       n2 = n2,
       raw_mean = raw_mean,
-      raw_sd = raw_sd
+      raw_sd = raw_sd,
+      detectable_truegraph = detectable
     ))
   }
 
@@ -662,6 +644,17 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
 
   n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
   n2 <- n - n1
+
+  det1 <- make_detectable_truegraph(truegraph = dag, R = model1$R,  N = n1)
+  det2 <- make_detectable_truegraph(truegraph = dag, R = model2$R,  N = n2)
+
+  detectable <- 1 * ((det1 + det2) > 0)
+
+  model1$B <- model1$B * detectable
+  model2$B <- model2$B * detectable
+
+  model1$R <- B_to_R(model1$B, model1$O)
+  model2$R <- B_to_R(model2$B, model2$O)
 
   X1 <- simulate(model1$B, model1$O, n1)
   X2 <- simulate(model2$B, model2$O, n2)
@@ -687,7 +680,8 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
       n1 = n1,
       n2 = n2,
       raw_mean = raw_mean,
-      raw_sd = raw_sd
+      raw_sd = raw_sd,
+      detectable_truegraph = detectable
     ))
   }
 
@@ -710,11 +704,19 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
   # err = additive error distribution
   
   model <- corr(g)
-  B <- model$B
-  O <- model$O
 
   n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
   n2 <- n - n1
+
+  det <- make_detectable_truegraph(truegraph = g, R = model$R,  N = n)
+  detectable <- 1 * (det > 0)
+  model$B <- model$B * detectable
+  model$R <- B_to_R(model$B, model$O)
+
+  B <- model$B
+  O <- model$O
+
+  
 
   # p = |variables|
   p <- ncol(B)
@@ -779,7 +781,8 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
       raw_mean = raw_mean,
       raw_sd = raw_sd,
       bimodal_node = chosen_original,
-      bimodal_node_name = bimodal_node_name
+      bimodal_node_name = bimodal_node_name,
+      detectable_truegraph = detectable
       ))
   }
 
