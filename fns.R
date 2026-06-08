@@ -50,25 +50,6 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, vars 
   )
   membershipp_list
 }
-choose_representative_membership <- function(membershipp_list) {
-  C_list <- lapply(membershipp_list, function(P) P %*% t(P))
-
-  C_bar <- Reduce("+", C_list) / length(C_list)
-
-  dist <- sapply(C_list, function(C) {
-    sqrt(sum((C - C_bar)^2))
-  })
-
-  best <- which.min(dist)
-
-  list(
-    membership = membershipp_list[[best]],
-    index = best,
-    distance = dist[best],
-    all_distances = dist,
-    C_bar = C_bar
-  )
-}
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
@@ -121,8 +102,12 @@ usrscoreparameters <- function(initparam,
   initparam$am <- usrpar$am
   initparam$aw <- usrpar$aw
   initparam$T0scale <- usrpar$T0scale
+  
+  # save for bge params later
+  bgeinitparam <- initparam
+  bgeinitparam$type <- "bge"
 
-
+  
   # only depending on n
   n = initparam$n
   mu0 <- numeric(n)
@@ -132,6 +117,8 @@ usrscoreparameters <- function(initparam,
   dp_membershipp_list<- usrpar$membershipp_list
   n_dp <- length(dp_membershipp_list)
   initparam$dp_scoreparam_list <- vector("list", n_dp)
+  mu_sum <- numeric(n)
+  cov_sum <- matrix(0, n, n)
   for (d in 1:n_dp){
     membershipp_list = dp_membershipp_list[[d]]$membershipp
     L <- length(membershipp_list)
@@ -141,6 +128,7 @@ usrscoreparameters <- function(initparam,
       K = ncol(membershipp)
       Nk <- numeric(K)
       means <- vector("list", K)
+      covs <- vector("list", K)
       TN <- vector("list", K)
       awpN <- numeric(K)
       constscorefact <- numeric(K)
@@ -148,6 +136,7 @@ usrscoreparameters <- function(initparam,
         weightvector = membershipp[,k]
         Nk[k] <- sum(weightvector)
         forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
+        covs[[k]] <- forcov$cov
         covmatk <- forcov$cov * Nk[k]
         means[[k]] <- forcov$center
         TN[[k]] <- T0 + covmatk + 
@@ -168,6 +157,11 @@ usrscoreparameters <- function(initparam,
           j * log(initparam$pf)
       }
 
+      # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
+      mu_bar <- Reduce("+", Map(function(mu, w) w * mu, means, clusterWeights))
+      cov_bar <- Reduce("+", Map(function(S, w) w * S, covs, clusterWeights))
+      mu_sum <- mu_sum + mu_bar
+      cov_sum <- cov_sum + cov_bar
 
       # save score params for DP_list[l]
       scoreparam_list[[l]] <- list(
@@ -188,19 +182,40 @@ usrscoreparameters <- function(initparam,
     )
   }
 
-  rep <- choose_representative_membership(
-    unlist(
-      lapply(dp_membershipp_list, `[[`, "membershipp"),
-      recursive = FALSE
-    )
-  )
-  initparam$representative_membership <- rep$index
-
+  # set up bge params with averaged means and covs across DPs
+  N <- nrow(initparam$data)
+  means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
+  covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
+  covmat  <- covmat * (N - 1)
+  bgeinitparam$means  <- means
+  bgeinitparam$covmat  <- covmat
+  bgeinitparam$N <- N
+  mu0 <- numeric(n)
+  T0scale <- usrpar$am * (usrpar$aw - n - 1)/(usrpar$am + 
+      1)
+  T0 <- diag(T0scale, n, n)
+  bgeinitparam$TN <- T0 + covmat + ((usrpar$am * N)/(usrpar$am + 
+      N)) * (mu0 - means) %*% t(mu0 - means)
+  bgeinitparam$awpN <- usrpar$aw + N
+  constscorefact <- -(N/2) * log(pi) + (1/2) * log(usrpar$am/(usrpar$am + 
+      N))
+  bgeinitparam$muN <- (N * means + usrpar$am * mu0)/(N + usrpar$am)
+  bgeinitparam$SigmaN <- bgeinitparam$TN/(bgeinitparam$awpN - n - 
+      1)
+  bgeinitparam$scoreconstvec <- numeric(n)
+  for (j in (1:n)) {
+      awp <- usrpar$aw - n + j
+      bgeinitparam$scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
+          lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(T0scale) - 
+          j * log(bgeinitparam$pf)
+  }
+  attr(bgeinitparam, "class") <- "scoreparameters"
+  initparam$bgeinitparam <- bgeinitparam
 
   initparam
 }
 usrDAGcorescore <- function (j, parentnodes, n, param) {
-  targetCoreScore(j, parentnodes, n, param, l = param$representative_membership)
+  BiDAG:::DAGcorescore(j, parentnodes, n, param$bgeinitparam)
 }
 targetCoreScore <- function (j, parentnodes, n, param, l) {
   # not depending on cluster param
