@@ -57,7 +57,7 @@ results_list <- foreach(
   cat("Running file:", file, "\n")
   
   DP.searchspace <- readRDS(file)
-  bge.searchspace <- set.searchspace(sachs.data, dual, "bge", bge.par)
+  bge.searchspace <- set.searchspace(sachs.data, "bge", bge.par)
   
   res <- data.frame()
   
