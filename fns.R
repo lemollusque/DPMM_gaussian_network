@@ -357,28 +357,12 @@ test_compare_dp_vs_bge <- function(usr_score_param,
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Run MCMC
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-set.searchspace <- function(data, start_type, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
+set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
-  startspace <- NULL
+  cor_mat <- cor(data)
+  startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
 
-  # compute startspace
-  if(start_type == "pc") {
-    cor_mat <- cor(data)
-    pc.skel <- pcalg::skeleton(suffStat = list(C = cor_mat, 
-                  n = nrow(data)), indepTest = pcalg::gaussCItest, alpha = alpha, 
-                  labels = colnames(data), method = "stable", 
-                  verbose = FALSE)
-    g <- pc.skel@graph
-    startspace <- 1 * (graph2m(g))
-  }
-  if(start_type == "dual") {
-    cor_mat <- cor(data)
-    startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
-  }  
-  if(start_type == "full") {
-    startspace <- 1 - diag(ncol(data))
-    dimnames(startspace) <- list(colnames(data), colnames(data))
-  }
+  
     
   if(method == "DP") {
     # dirichlet params
@@ -401,6 +385,9 @@ set.searchspace <- function(data, start_type, method, par = 1, alpha = 0.05, usr
     if (is.null(usrpar$progressBar)) {
       usrpar$progressBar <- FALSE
     }
+    if (is.null(usrpar$dp_fitspace)) {
+      usrpar$dp_fitspace <- "full"
+    }
     alphaPriors <- usrpar$alphaPriors
     g0Priors <- usrpar$g0Priors
     numInitialClusters <- usrpar$numInitialClusters
@@ -410,12 +397,31 @@ set.searchspace <- function(data, start_type, method, par = 1, alpha = 0.05, usr
     burnin <- usrpar$dp_burnin
     L <- usrpar$dp_n_sample
     dp_fits <- usrpar$dp_fits
+
+    # compute fitspace
+    if(usrpar$dp_fitspace == "pc") {
+      cor_mat <- cor(data)
+      pc.skel <- pcalg::skeleton(suffStat = list(C = cor_mat, 
+                    n = nrow(data)), indepTest = pcalg::gaussCItest, alpha = alpha, 
+                    labels = colnames(data), method = "stable", 
+                    verbose = FALSE)
+      g <- pc.skel@graph
+      fitspace <- 1 * (graph2m(g))
+    }
+    if(usrpar$dp_fitspace == "dual") {
+      fitspace <- startspace
+    }  
+    if(usrpar$dp_fitspace == "full") {
+      fitspace <- 1 - diag(ncol(data))
+      dimnames(fitspace) <- list(colnames(data), colnames(data))
+    }
+    
     # prepare dirichlet gamma list
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
-      for (child in colnames(startspace)){
-        parents <- names(which(startspace[ , child] == 1))
-        children <- names(which(startspace[child, ] == 1))
+      for (child in colnames(fitspace)){
+        parents <- names(which(fitspace[ , child] == 1))
+        children <- names(which(fitspace[child, ] == 1))
         neighbour <- setdiff(unique(c(parents, children)), child)
         
         # create DP

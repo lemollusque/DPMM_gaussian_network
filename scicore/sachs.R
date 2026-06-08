@@ -27,12 +27,12 @@ sachs.data <- as.matrix(sachs.data)
 N <- nrow(sachs.data)
 
 bge.par = 0.01
-start_type = "dual"
+dp_fitspace = "full"
 # dirichlet params
 dp_iter <- 300
 burnin <- 150
 L <- 20
-dp_fits <- 5
+dp_fits <- 1
 
 # dp settings
 dp_usrpar <- list(
@@ -49,7 +49,8 @@ dp_usrpar <- list(
   numInitialClusters = min(20, ceiling(sqrt(N))),
   dp_burnin = burnin,
   dp_n_sample = L,
-  dp_fits = dp_fits
+  dp_fits = dp_fits,
+  dp_fitspace = dp_fitspace
 )
 
 init.seed <- 234
@@ -105,7 +106,6 @@ with_progress({
     
     DP.searchspace <- set.searchspace(
       sachs.data,
-      start_type,
       "DP",
       usrpar = dp_usrpar
     )

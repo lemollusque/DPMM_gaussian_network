@@ -29,7 +29,7 @@ insertSource("fns.R", package = "BiDAG")
 
 init.seed <- 234
 iter <- 100
-start_type = "dual"
+dp_fitspace = "full"
 
 # dirichlet params
 dp_iter <- 200
@@ -134,6 +134,7 @@ with_progress({
       dp_burnin = burnin,
       dp_n_sample = L,
       dp_fits = dp_fits,
+      dp_fitspace = dp_fitspace,
       alphaPriors = c(2,4),
       g0Priors = function(n) {
         list(mu0 = rep(0, n), 
@@ -145,8 +146,8 @@ with_progress({
     )
     
     # search spaces
-    DP.searchspace <- set.searchspace(data, start_type, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace(data, start_type, "bge", bge.par)
+    DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
+    bge.searchspace <- set.searchspace(data, "bge", bge.par)
     
     iter_results <- data.frame()
     
