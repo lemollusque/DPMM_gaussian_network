@@ -239,7 +239,7 @@ results <- bind_rows(lapply(files, readRDS))
 # keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")
 
 results_small <- results %>%
-  filter(graph == "pattern", method %in% keep_methods) 
+  filter(graph == "pattern") 
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))

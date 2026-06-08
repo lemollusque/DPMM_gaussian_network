@@ -631,7 +631,7 @@ simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
       n2 = n2,
       raw_mean = raw_mean,
       raw_sd = raw_sd,
-      detectable_truegraph = detectable
+      detectable_truegraph = as(detectable, "matrix")
     ))
   }
 
@@ -681,7 +681,7 @@ simulate_bimodal <- function(dag, n, bimodal_sep = 2,
       n2 = n2,
       raw_mean = raw_mean,
       raw_sd = raw_sd,
-      detectable_truegraph = detectable
+      detectable_truegraph = as(detectable, "matrix")
     ))
   }
 
@@ -782,7 +782,7 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
       raw_sd = raw_sd,
       bimodal_node = chosen_original,
       bimodal_node_name = bimodal_node_name,
-      detectable_truegraph = detectable
+      detectable_truegraph = as(detectable, "matrix")
       ))
   }
 
