@@ -1,45 +1,63 @@
 #---------------------- membership prob matrix ----------------------
-dp_membership_probs <- function(dp, burnin, L){
-  n_iter = length(dp$alphaChain)
-  # define samples to take
-  post_idx <- seq(burnin + 1, n_iter)
-  thin_idx <- round(seq(length(post_idx), 1, length.out = L))
-  sample_idx <- post_idx[thin_idx]
-  
-  y <- dp$data
-  N <- dp$n
-  mdObj <- dp$mixingDistribution # const if updatePrior = FALSE
-  clusterParams_sample = dp$clusterParametersChain[sample_idx]
-  weightsChain_sample = dp$weightsChain[sample_idx]
-  pointsPerCluster_sample <- lapply(weightsChain_sample, function(w) w * N) 
-  
-  
-  probs_list <- vector("list", length(clusterParams_sample))
-  for (l in 1:L) {
-    clusterParams <- clusterParams_sample[[l]]
-    pointsPerCluster <- pointsPerCluster_sample[[l]]
-    numLabels <- length(pointsPerCluster)
-    probs <- matrix(0, nrow = N, ncol = numLabels)
+dp_membership_probs <- function(fit, L = 500) {
+  Y <- as.matrix(fit$data)
+  N <- nrow(Y)
+  p <- ncol(Y)
+  M <- length(fit$mean)
 
-    for (i in seq_len(N)) {
-      rowp <- pointsPerCluster *
-        Likelihood(mdObj, y[i, , drop = FALSE], clusterParams)
+  sample_idx <- unique(round(seq(1, M, length.out = min(L, M))))
+  probs_list <- vector("list", length(sample_idx))
 
-      rowp[is.na(rowp)] <- 0
-      if (all(rowp == 0)) {
-          rowp <- rep_len(1, length(rowp))
+  for (ll in seq_along(sample_idx)) {
+    m <- sample_idx[ll]
+    mu <- as.matrix(fit$mean[[m]])
+    Sigma <- fit$sigma2[[m]]
+    w <- as.numeric(fit$probs[[m]])
+
+    K <- length(w)
+    log_probs <- matrix(-Inf, N, K)
+
+    for (k in seq_len(K)) {
+      if (p == 1) {
+        sig2 <- as.numeric(Sigma)[k]
+        log_probs[, k] <-
+          log(w[k]) +
+          dnorm(
+            Y[, 1],
+            mean = mu[k],
+            sd = sqrt(sig2),
+            log = TRUE
+          )
+
+      } else {
+        Sk <- Sigma[, , k, drop = FALSE][, , 1]
+        log_probs[, k] <-
+          log(w[k]) +
+          mvtnorm::dmvnorm(
+            Y,
+            mean = mu[k, ],
+            sigma = Sk,
+            log = TRUE
+          )
       }
-
-      probs[i, ] <- rowp
     }
-    
-    # keep only columns that are not all zero
-    col_sums <- colSums(probs)
-    probs <- probs[, col_sums > 0, drop = FALSE]
 
-    probs_list[[l]] <- probs / rowSums(probs)
+
+    row_max <- apply(log_probs, 1, max)
+    probs <- exp(log_probs - row_max)
+    probs[!is.finite(probs)] <- 0
+
+    zero_rows <- rowSums(probs) == 0
+    if (any(zero_rows)) {
+      probs[zero_rows, ] <- 1 / K
+    }
+
+    keep <- colSums(probs) > 0
+    probs <- probs[, keep, drop = FALSE]
+
+    probs_list[[ll]] <- probs / rowSums(probs)
   }
-  return(probs_list)
+  probs_list
 }
 add_membershipp <- function(membershipp_list, membershipp, child, parents, vars = c(child, parents)) {
   membershipp_list[[length(membershipp_list) + 1]] <- list(
@@ -364,35 +382,15 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
 
   if(method == "DP") {
     # dirichlet params
-    if (is.null(usrpar$alphaPriors)) {
-      usrpar$alphaPriors <- c(2, 4)
+    if (is.null(usrpar$dp_prior)) {
+      usrpar$dp_prior <- list(strength = 1, discount = 0, model="LS")
     }
-    if (is.null(usrpar$g0Priors)) {
-      usrpar$g0Priors <- function(n) {
-        list(
-          mu0 = rep(0, n),
-          kappa0 = 1,
-          nu = n,
-          Lambda = diag(n) / n
-        )
-      }
+    if (is.null(usrpar$dp_mcmc)) {
+      usrpar$dp_mcmc <- list(niter = 5000, nburn = 3000)
     }
-    if (is.null(usrpar$numInitialClusters)) {
-      usrpar$numInitialClusters <- 1
-    }
-    if (is.null(usrpar$progressBar)) {
-      usrpar$progressBar <- FALSE
-    }
-    if (is.null(usrpar$dp_fitspace)) {
-      usrpar$dp_fitspace <- "full"
-    }
-    alphaPriors <- usrpar$alphaPriors
-    g0Priors <- usrpar$g0Priors
-    numInitialClusters <- usrpar$numInitialClusters
-    progressBar <- usrpar$progressBar
 
-    dp_iter <- usrpar$dp_iter
-    burnin <- usrpar$dp_burnin
+    prior <- usrpar$dp_prior
+    mcmc <- usrpar$dp_mcmc
     L <- usrpar$dp_n_sample
     dp_fits <- usrpar$dp_fits
 
@@ -423,21 +421,12 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
         neighbour <- setdiff(unique(c(parents, children)), child)
         
         # create DP
-        dp_data = data[,c(child, neighbour), drop = FALSE]
-        if (length(neighbour) == 0){
-          dp <-  DirichletProcessGaussian(dp_data)
-        }
-        else{
-          n = ncol(dp_data)
-          dp <- DirichletProcessMvnormal(dp_data,       
-                                alphaPriors = alphaPriors,
-                                g0Priors = g0Priors(n),
-                                numInitialClusters = numInitialClusters)
-        }
-        dp <- Fit(dp, dp_iter, progressBar = progressBar)
+        dp_data = data[,c(child, neighbour)]
+        output <- list(out_param = TRUE, out_type = "FULL")  
+        dp <- PYdensity(y = dp_data, mcmc = mcmc, prior = prior, output = output)
         
-        Gamma_sample <- dp_membership_probs(dp, burnin, L)
         # add meta data in list
+        Gamma_sample <- dp_membership_probs(dp, L)
         Gamma_list <- add_membershipp(
           Gamma_list, 
           Gamma_sample, 

@@ -1,6 +1,5 @@
 packages <- c(
   "BiDAG",
-  "dirichletprocess",
   "dplyr",
   "ggplot2",
   "foreach",
@@ -10,7 +9,8 @@ packages <- c(
   "doRNG",
   "mvtnorm",
   "BayesFactor",
-  "matrixStats"
+  "matrixStats",
+  "BNPmix"
 )
 
 for (pkg in packages) {
@@ -31,10 +31,9 @@ init.seed <- 234
 iter <- 100
 
 # dirichlet params
-dp_iter <- 200
-burnin <- 100
-L <- 10
-dp_fits <- 1
+dp_iter <- 5000
+burnin <- 3000
+L <- 100
 
 param_grid <- expand.grid(
   N = c(100),
@@ -78,7 +77,7 @@ with_progress({
   
   foreach(
     k = seq_len(nrow(sim_grid)),
-    .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust", "mvtnorm")
+    .packages = c("BiDAG", "matrixStats", "dplyr", "mclust", "mvtnorm")
   ) %dopar% {
     
     source("comparison_algs.R")
@@ -152,20 +151,11 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_iter = dp_iter,
-      dp_burnin = burnin,
+      dp_prior = list(strength = 1, discount = 0, model="LS"),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin),
       dp_n_sample = L,
       dp_fits = dp_fits,
-      dp_fitspace = "full",
-      alphaPriors = c(2,4),
-      g0Priors = function(n) {
-        list(mu0 = rep(0, n), 
-             kappa0 = 0.1, 
-             nu = n+5, 
-             Lambda = diag(n))
-      },
-      numInitialClusters = min(20, ceiling(sqrt(N))),
-      progressBar = T
+      dp_fitspace = "full"
     )
 
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
@@ -183,20 +173,11 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_iter = dp_iter,
-      dp_burnin = burnin,
+      dp_prior = list(strength = 1, discount = 0, model="LS"),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin),
       dp_n_sample = L,
       dp_fits = dp_fits,
-      dp_fitspace = "dual",
-      alphaPriors = c(2,4),
-      g0Priors = function(n) {
-        list(mu0 = rep(0, n), 
-             kappa0 = 0.1, 
-             nu = n+5, 
-             Lambda = diag(n))
-      },
-      numInitialClusters = min(20, ceiling(sqrt(N))),
-      progressBar = T
+      dp_fitspace = "dual"
     )
     
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)

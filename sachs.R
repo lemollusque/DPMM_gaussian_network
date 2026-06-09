@@ -32,7 +32,6 @@ trueDAG <- as.matrix(trueDAG)
 set.seed(100)
 
 bge.par = 0.01
-dual <- TRUE 
 
 results <- data.frame()
 
@@ -42,12 +41,15 @@ files <- list.files(
   full.names = TRUE
 )
 
+out_dir <- "Sachs/eshd"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
 plan(multisession, workers = min(length(files), availableCores() - 1))
 registerDoFuture()
 
 results_list <- foreach(
   file = files,
-  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
+  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm", "dplyr")
 ) %dorng% {
   
   source("fns.R")
@@ -78,17 +80,24 @@ results_list <- foreach(
   res <- compare_results(bge.fit, c(bge.edgep, "BGe, order"), res, trueDAG)
   
   res$file <- basename(file)
+  
+  colnames(res) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P", "time",
+                     "ErktoAkt", "ErktoPKA", "Scorefn", "graph", "file")
+  
+  out_file <- file.path(
+    out_dir,
+    paste0(tools::file_path_sans_ext(basename(file)), "_results.rds")
+  )
+  
+  saveRDS(res, out_file)
+  
   res
 }
 
-results <- dplyr::bind_rows(results_list)
 
-colnames(results) <- c("ESHD", "eTP", "eFP", "TPR", "FPR_P", "time",
-                       "ErktoAkt", "ErktoPKA", "Scorefn", "graph", "file")
 
-saveRDS(results, "Sachs/Sachs_results.rds")
-
-results <- readRDS("Sachs/Sachs_results.rds")
+files <- list.files(out_dir, pattern = "\\.rds$", full.names = TRUE)
+results <- bind_rows(lapply(files, readRDS))
 
 # plots resutts
 keep_methods <- c("DP, partition", "DP, order", "BGe, partition", "BGe, order")

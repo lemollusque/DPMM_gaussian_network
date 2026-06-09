@@ -1,6 +1,5 @@
 packages <- c(
   "BiDAG",
-  "dirichletprocess",
   "dplyr",
   "ggplot2",
   "foreach",
@@ -10,7 +9,8 @@ packages <- c(
   "doRNG",
   "mvtnorm",
   "BayesFactor",
-  "matrixStats"
+  "matrixStats",
+  "BNPmix"
 )
 
 for (pkg in packages) {
@@ -32,10 +32,9 @@ iter <- 100
 dp_fitspace = "full"
 
 # dirichlet params
-dp_iter <- 200
-burnin <- 100
-L <- 10
-dp_fits <- 1
+dp_iter <- 5000
+burnin <- 3000
+L <- 100
 
 param_grid <- expand.grid(
   N = c(100, 200, 500, 1000),
@@ -79,7 +78,7 @@ with_progress({
   
   foreach(
     k = seq_len(nrow(sim_grid)),
-    .packages = c("BiDAG", "matrixStats", "dirichletprocess", "dplyr", "mclust", "mvtnorm")
+    .packages = c("BiDAG", "matrixStats", "dplyr", "mclust", "mvtnorm")
   ) %dopar% {
     
     source("comparison_algs.R")
@@ -126,50 +125,61 @@ with_progress({
     }
     
     
+    iter_results <- data.frame()
+    
+    # save bge results
+    bge.searchspace <- set.searchspace(data, "bge", bge.par)
+    bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
+    iter_results <- compare_results(
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
+    )
+    bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
+    iter_results <- compare_results(
+      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
+    )
+    
+    # save dp results
     # dp settings
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_iter = dp_iter,
-      dp_burnin = burnin,
+      dp_prior = list(strength = 1, discount = 0, model="LS"),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin),
       dp_n_sample = L,
       dp_fits = dp_fits,
-      dp_fitspace = dp_fitspace,
-      alphaPriors = c(2,4),
-      g0Priors = function(n) {
-        list(mu0 = rep(0, n), 
-             kappa0 = 0.1, 
-             nu = n+5, 
-             Lambda = diag(n))
-      },
-      numInitialClusters = min(20, ceiling(sqrt(N)))
+      dp_fitspace = "full"
     )
-    
-    # search spaces
+
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
-    bge.searchspace <- set.searchspace(data, "bge", bge.par)
-    
-    iter_results <- data.frame()
-    
-    
-    bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
-    iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
-    )
-    
-    bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
-    iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
-    )
-    
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
     )
-    
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
+    )
+    
+    # save dp sub results
+    # dp settings
+    dp_usrpar <- list(
+      pctesttype = "bge",
+      am = bge.par,
+      dp_prior = list(strength = 1, discount = 0, model="LS"),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin),
+      dp_n_sample = L,
+      dp_fits = dp_fits,
+      dp_fitspace = "dual"
+    )
+    
+    DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
+    dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
+    iter_results <- compare_results(
+      dp.fit, c(bge.par, "DP dual, partition"), iter_results,  detectable_truegraph
+    )
+    dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
+    iter_results <- compare_results(
+      dp.fit, c(bge.par, "DP dual, order"), iter_results,  detectable_truegraph
     )
     
     iter_results$N <- N

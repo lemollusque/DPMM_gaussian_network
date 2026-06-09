@@ -1,6 +1,5 @@
 library(BiDAG)
 library(matrixStats)
-library(dirichletprocess)
 library(dplyr)
 library(ggplot2)
 library(foreach)
@@ -14,6 +13,7 @@ library(mvtnorm)
 library(readxl)
 library(BayesFactor)
 library(matrixStats)
+library(BNPmix)
 
 source("comparison_algs.R")
 source("dualPC.R")
@@ -27,30 +27,15 @@ sachs.data <- as.matrix(sachs.data)
 N <- nrow(sachs.data)
 
 bge.par = 0.01
-dp_fitspace = "full"
 # dirichlet params
-dp_iter <- 300
-burnin <- 150
-L <- 20
-dp_fits <- 1
-
-# dp settings
 dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
-  dp_iter = dp_iter,
-  alphaPriors = c(2,4),
-  g0Priors = function(n) {
-    list(mu0 = rep(0, n), 
-          kappa0 = 0.1, 
-          nu = n+5, 
-          Lambda = diag(n))
-  },
-  numInitialClusters = min(20, ceiling(sqrt(N))),
-  dp_burnin = burnin,
-  dp_n_sample = L,
-  dp_fits = dp_fits,
-  dp_fitspace = dp_fitspace
+  dp_prior = list(strength = 1, discount = 0, model="L"),
+  dp_mcmc = list(niter = 5000, nburn = 3000),
+  dp_n_sample = 200,
+  dp_fits = 1,
+  dp_fitspace = "full"
 )
 
 init.seed <- 234
@@ -82,7 +67,7 @@ with_progress({
   foreach(
     i = seq_len(iter),
     .packages = c(
-      "BiDAG", "matrixStats", "dirichletprocess", "dplyr",
+      "BiDAG", "matrixStats", "dplyr",
       "mclust", "mvtnorm"
     )
   ) %dopar% {
