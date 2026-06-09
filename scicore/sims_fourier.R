@@ -32,6 +32,7 @@ iter <- 100
 dp_fitspace = "full"
 
 # dirichlet params
+dp_fits <- 1
 dp_iter <- 5000
 burnin <- 3000
 L <- 100
@@ -131,11 +132,11 @@ with_progress({
     bge.searchspace <- set.searchspace(data, "bge", bge.par)
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = FALSE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, partition"), iter_results, detectable_truegraph
+      bge.fit, c(bge.par, "BGe, partition"), iter_results, truegraph
     )
     bge.fit <- bge.partition.mcmc(bge.searchspace, order = TRUE)
     iter_results <- compare_results(
-      bge.fit, c(bge.par, "BGe, order"), iter_results, detectable_truegraph
+      bge.fit, c(bge.par, "BGe, order"), iter_results, truegraph
     )
     
     # save dp results
@@ -153,11 +154,11 @@ with_progress({
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
     )
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
     )
     
     # save dp sub results
@@ -175,11 +176,11 @@ with_progress({
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP dual, partition"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP dual, partition"), iter_results,  truegraph
     )
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP dual, order"), iter_results,  detectable_truegraph
+      dp.fit, c(bge.par, "DP dual, order"), iter_results,  truegraph
     )
     
     iter_results$N <- N

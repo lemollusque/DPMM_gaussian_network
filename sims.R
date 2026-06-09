@@ -31,6 +31,7 @@ init.seed <- 234
 iter <- 100
 
 # dirichlet params
+dp_fits <- 1
 dp_iter <- 5000
 burnin <- 3000
 L <- 100
