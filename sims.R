@@ -31,10 +31,12 @@ init.seed <- 234
 iter <- 100
 
 # dirichlet params
+dp_model = "LS"
+dp_strength = 0.1
 dp_fits <- 1
 dp_iter <- 5000
 burnin <- 3000
-L <- 100
+L <- 20
 
 param_grid <- expand.grid(
   N = c(100),
@@ -152,8 +154,8 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_prior = list(strength = 1, discount = 0, model="LS"),
-      dp_mcmc = list(niter = dp_iter, nburn = burnin),
+      dp_prior = list(strength = dp_strength, discount = 0),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin, model = dp_model),
       dp_n_sample = L,
       dp_fits = dp_fits,
       dp_fitspace = "full"
@@ -174,8 +176,8 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_prior = list(strength = 1, discount = 0, model="LS"),
-      dp_mcmc = list(niter = dp_iter, nburn = burnin),
+      dp_prior = list(strength = dp_strength, discount = 0),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin, model = dp_model),
       dp_n_sample = L,
       dp_fits = dp_fits,
       dp_fitspace = "dual"

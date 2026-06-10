@@ -32,10 +32,12 @@ iter <- 100
 dp_fitspace = "full"
 
 # dirichlet params
+dp_model = "LS"
+dp_strength = 0.1
 dp_fits <- 1
 dp_iter <- 5000
 burnin <- 3000
-L <- 100
+L <- 20
 
 param_grid <- expand.grid(
   N = c(100, 200, 500, 1000),
@@ -144,8 +146,8 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_prior = list(strength = 1, discount = 0, model="LS"),
-      dp_mcmc = list(niter = dp_iter, nburn = burnin),
+      dp_prior = list(strength = dp_strength, discount = 0),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin, model = dp_model),
       dp_n_sample = L,
       dp_fits = dp_fits,
       dp_fitspace = "full"
@@ -154,11 +156,11 @@ with_progress({
     DP.searchspace <- set.searchspace(data, "DP", usrpar = dp_usrpar)
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = FALSE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, partition"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, partition"), iter_results,  detectable_truegraph
     )
     dp.fit <- DP.partition.mcmc(DP.searchspace, order = TRUE)
     iter_results <- compare_results(
-      dp.fit, c(bge.par, "DP, order"), iter_results,  truegraph
+      dp.fit, c(bge.par, "DP, order"), iter_results,  detectable_truegraph
     )
     
     # save dp sub results
@@ -166,8 +168,8 @@ with_progress({
     dp_usrpar <- list(
       pctesttype = "bge",
       am = bge.par,
-      dp_prior = list(strength = 1, discount = 0, model="LS"),
-      dp_mcmc = list(niter = dp_iter, nburn = burnin),
+      dp_prior = list(strength = dp_strength, discount = 0),
+      dp_mcmc = list(niter = dp_iter, nburn = burnin, model = dp_model),
       dp_n_sample = L,
       dp_fits = dp_fits,
       dp_fitspace = "dual"
