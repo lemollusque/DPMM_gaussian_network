@@ -288,11 +288,33 @@ with_progress({
 files <- list.files("wasserstein", pattern = "\\.rds$", full.names = TRUE)
 results <- bind_rows(lapply(files, readRDS))
 
+results_small <- results %>%
+  mutate(
+    method = factor(
+      method,
+      levels = c(
+        "BGe",
+        "DP dual",
+        "DP"
+      )
+    )
+  )
 
-ggplot(results, aes(x = method, y = value, color = method)) +
+method_cols <- c(
+  "BGe" = "#F8766D",
+  "DP" = "#00BA38",
+  "DP dual" = "#619CFF"
+)
+
+ggplot(results_small, aes(x = method, y = value, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
   geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
-  labs(x = NULL, y = "E-W") +
+  labs(x = NULL, y = "E-Wasserstein") +
+  scale_color_manual(
+    values = method_cols[c("BGe",
+                           "DP",
+                           "DP dual")]
+  ) +
   facet_grid(
     N ~ d,
     scales = "free_y",
