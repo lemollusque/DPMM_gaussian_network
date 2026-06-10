@@ -83,12 +83,14 @@ usrscoreparameters <- function(initparam,
                                              )
                                        ) 
 {
-  
-  if (is.null(usrpar$dp_iter)) {
-    usrpar$dp_iter <- 100
+  if (is.null(usrpar$dp_prior)) {
+    usrpar$dp_prior <- list(strength = 1, discount = 0, model="LS")
   }
-  if (is.null(usrpar$dp_burnin)) {
-    usrpar$dp_burnin <- 30
+  if (is.null(usrpar$dp_mcmc)) {
+    usrpar$dp_mcmc <- list(niter = 5000, nburn = 3000)
+  }
+  if (is.null(usrpar$dp_fits)) {
+    usrpar$dp_fits <- 1
   }
   if (is.null(usrpar$dp_n_sample)) {
     usrpar$dp_n_sample <- 10
@@ -113,8 +115,9 @@ usrscoreparameters <- function(initparam,
   else {
     initparam$logedgepmat <- log(usrpar$edgepmat)
   }
-  initparam$dp_iter <- usrpar$dp_iter
-  initparam$dp_burnin <- usrpar$dp_burnin
+  initparam$dp_prior <- usrpar$dp_prior
+  initparam$dp_mcmc <- usrpar$dp_mcmc
+  initparam$dp_fits <- usrpar$dp_fits
   initparam$dp_n_sample <- usrpar$dp_n_sample
   initparam$pf <- usrpar$edgepf
   initparam$am <- usrpar$am
@@ -382,13 +385,6 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
 
   if(method == "DP") {
     # dirichlet params
-    if (is.null(usrpar$dp_prior)) {
-      usrpar$dp_prior <- list(strength = 1, discount = 0, model="LS")
-    }
-    if (is.null(usrpar$dp_mcmc)) {
-      usrpar$dp_mcmc <- list(niter = 5000, nburn = 3000)
-    }
-
     prior <- usrpar$dp_prior
     mcmc <- usrpar$dp_mcmc
     L <- usrpar$dp_n_sample
@@ -452,7 +448,7 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
        maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time)
 }
 DP.partition.mcmc <- function(searchspace, alpha = 0.05, 
-                               order = FALSE, burnin = 0.33, iterations = 600) {
+                               order = FALSE, burnin = 0.33, iterations = 1000) {
   start <- Sys.time()
   Score <- searchspace$score
   
@@ -505,7 +501,7 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   return(dp.fit)
 }
 bge.partition.mcmc <- function(searchspace, alpha = 0.05, 
-                               order = FALSE, burnin = 0.33, iterations = 600) {
+                               order = FALSE, burnin = 0.33, iterations = 1000) {
   start <- Sys.time()
   BGEScore <- searchspace$score
   
