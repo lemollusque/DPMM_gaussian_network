@@ -83,8 +83,16 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
          file=paste0("./Sachs/saveout/dagdraw", n, "seed", seed, dname, ".RData"))
   }
 }  
-
-
+makeTrueDAGSamples <- function(truegraph, nDAGs) {
+  sampledDAGs <- replicate(nDAGs + 1, truegraph, simplify = FALSE)
+  sampledDAGs <- lapply(sampledDAGs, function(A) {
+    A <- as.matrix(A)
+    colnames(A) <- rownames(A) <- colnames(truegraph)
+    A
+  })
+  
+  sampledDAGs
+}
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Compute intervention effects with Bestie
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -115,7 +123,31 @@ computeEffects <- function(n, seed=101, dname="", DP=FALSE){
     }
   } else(warning("Looking for causal effects without a DAG? Try runif()!"))
 }
-
+computeEffects_mem <- function(sampledDAGs, scoreObject, DP = FALSE) {
+  if (DP) {
+    DP_DAGintervention(
+      incidences = sampledDAGs,
+      dataParams = scoreObject,
+      sample = TRUE
+    )
+  } else {
+    DAGintervention(sampledDAGs, scoreObject, sample = TRUE)
+  }
+}
+sampleTrueEffects <- function(Eff1, Eff2, n1, n2, labels = NULL, nSamples = 1000) {
+  n <- nrow(Eff1)
+  ntot <- n1 + n2
+  out <- vector("list", nSamples)
+  for (s in seq_len(nSamples)) {
+    M <- if (runif(1) < n1 / ntot) Eff1 else Eff2
+    
+    if (!is.null(labels)) {
+      colnames(M) <- rownames(M) <- labels
+    }
+    out[[s]] <- M
+  }
+  out
+}
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load collection of sampled DAGs and effects
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -311,8 +343,36 @@ wasserstein1d_empirical <- function(x, y) {
       quantile(y, probs = probs, type = 8, names = FALSE)
   ))
 }
+wasserstein_effect_avg <- function(effects4plot,
+                                   trueEffects,
+                                   effectGraph,
+                                   sortlabs = seq_len(nrow(effectGraph))) {
+  effsarray <- round(simplify2array(effects4plot), 8)
+  truearray <- round(simplify2array(trueEffects), 8)
 
+  nn <- length(sortlabs)
 
+  Wdist <- matrix(NA_real_, nn, nn)
+  rownames(Wdist) <- rownames(effectGraph)[sortlabs]
+  colnames(Wdist) <- colnames(effectGraph)[sortlabs]
+
+  for (ii in sortlabs) {
+    for (jj in sortlabs) {
+      Wdist[ii, jj] <- wasserstein1d_empirical(
+        truearray[ii, jj, ],
+        effsarray[ii, jj, ]
+      )
+    }
+  }
+
+  keep <- effectGraph == 1
+
+  list(
+    Wdist = Wdist,
+    avgW = mean(Wdist[keep], na.rm = TRUE),
+    nEffects = sum(keep, na.rm = TRUE)
+  )
+}
 plotCompareEffects <- function(effects4plot,
                                    trueEffects,
                                    sortlabs,

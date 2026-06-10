@@ -67,21 +67,6 @@ rescale_effects <- function(Eff, sds) {
 Eff1 <- rescale_effects(Eff1, sim$raw_sd)
 Eff2 <- rescale_effects(Eff2, sim$raw_sd)
 
-
-sampleTrueEffects <- function(Eff1, Eff2, n1, n2, labels = NULL, nSamples = 1000) {
-  n <- nrow(Eff1)
-  ntot <- n1 + n2
-  out <- vector("list", nSamples)
-  for (s in seq_len(nSamples)) {
-    M <- if (runif(1) < n1 / ntot) Eff1 else Eff2
-    
-    if (!is.null(labels)) {
-      colnames(M) <- rownames(M) <- labels
-    }
-    out[[s]] <- M
-  }
-  out
-}
 trueEffectSamples <- sampleTrueEffects(
   Eff1 = Eff1,
   Eff2 = Eff2,
@@ -110,28 +95,6 @@ sim$n2
 ##############################################
 # with perfect dags
 ##############################################
-makeTrueDAGSamples <- function(truegraph, nDAGs) {
-  sampledDAGs <- replicate(nDAGs + 1, truegraph, simplify = FALSE)
-    sampledDAGs <- lapply(sampledDAGs, function(A) {
-    A <- as.matrix(A)
-    colnames(A) <- rownames(A) <- colnames(truegraph)
-    A
-  })
-  
-  sampledDAGs
-}
-computeEffects_mem <- function(sampledDAGs, scoreObject, DP = FALSE) {
-  if (DP) {
-    DP_DAGintervention(
-      incidences = sampledDAGs,
-      dataParams = scoreObject,
-      sample = TRUE
-    )
-  } else {
-    DAGintervention(sampledDAGs, scoreObject, sample = TRUE)
-  }
-}
-
 nDAGs <- 500
 
 bge.par = 0.01
