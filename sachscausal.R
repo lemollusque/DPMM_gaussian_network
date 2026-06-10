@@ -1,7 +1,6 @@
 library(BiDAG)
 library(Bestie)
 library(matrixStats)
-library(dirichletprocess)
 library(dplyr)
 library(ggplot2)
 library(foreach)
@@ -14,6 +13,7 @@ library(doRNG)
 library(mvtnorm)
 library(BayesFactor)
 library(matrixStats)
+library(BNPmix)
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -32,54 +32,11 @@ insertSource("fns.R", package = "BiDAG")
 sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
 sachs.data <- as.matrix(sachs.data)
 
-nDAGs <- 100
-nSeeds <- 20
+nDAGs <- 50
+nSeeds <- 50
 batch <- 100 + 1:nSeeds
 labels4plot <- colnames(sachs.data) 
 nNodes <- length(labels4plot)
-
-
-plan(multisession, workers = min(length(batch), availableCores() - 1))
-registerDoFuture()
-
-foreach(
-  seednumber = batch,
-  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
-) %dorng% {
-  
-  source("fns.R")
-  insertSource("fns.R", package = "BiDAG")
-  source("toyDAGfunctionsSachs.R")
-  
-  timing <- proc.time()
-  
-  fname <- sprintf(
-    "Sachs/parallel_searchspaces/DP_searchspace_rep_%03d.rds",
-    seednumber - 100
-  )
-  
-  cat("Seed is", seednumber, "\n")
-  
-  DP.searchspace <- readRDS(fname)
-  
-  sampleDAGs(
-    inData = sachs.data,
-    scoreObject = DP.searchspace$score,
-    weighted = TRUE,
-    nDigraphs = nDAGs,
-    seed = seednumber
-  )
-  
-  computeEffects(
-    n = nNodes,
-    seed = seednumber,
-    DP = TRUE
-  )
-  
-  cat("Time:", proc.time() - timing, "\n")
-  
-  TRUE
-}
 
 data4plot <- loadsamples(seeds=batch, nn=nNodes)
 
