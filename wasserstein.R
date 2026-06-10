@@ -309,7 +309,7 @@ method_cols <- c(
 ggplot(results_small, aes(x = method, y = value, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
   geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
-  labs(x = NULL, y = "E-Wasserstein") +
+  labs(x = NULL, y = " Average Wasserstein Distance") +
   scale_color_manual(
     values = method_cols[c("BGe",
                            "DP",
