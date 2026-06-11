@@ -32,7 +32,8 @@ library(graph)
 library(BiDAG)
 
 # Use BiDAG with intervention scoring
-insertSource("./ifns.R", package = "BiDAG")
+insertSource("./usrscorefns.R", package = "BiDAG")
+source("./intfns.R") # load other functions
 
 ### Settings
 # for 100 nodes takes up to an hour for MAP and MCMC
