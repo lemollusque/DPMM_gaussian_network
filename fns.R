@@ -71,9 +71,10 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, vars 
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
-                                             dp_iter = 100,
-                                             dp_burnin = 30,
+                                             dp_mcmc = list(niter = 5000, nburn = 3000),
+                                             dp_prior = list(strength = 1, discount = 0, model="LS"),
                                              dp_n_sample = 10,
+                                             dp_fits = 1,
                                              membershipp_list = NULL,
                                              am = 1, 
                                              aw = NULL, 
