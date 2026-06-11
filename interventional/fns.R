@@ -85,89 +85,29 @@ usrscoreparameters <- function(initparam,
                                              bgremove = TRUE
                                              )
                                        ) 
-{
-  n <- initparam$n
-  Imat <- usrpar$Imat
-  bgn <- ncol(Imat)
-  colnames(Imat) <- paste0("i", 1:bgn)
-  data <- initparam$data
-  weightvector <- usrpar$weightvector
-  
-  exps <- mgcv::uniquecombs(Imat) # experimental conditions
-  expsrows <- attr(exps, "index") # rows with each condition
- 
-  if (bgn > 0 && nrow(exps) > 1) {
-    bgnodes <- seq_len(bgn)
-    initparam$data <- cbind(Imat, data)
-    initparam$n <- ncol(initparam$data)
-    initparam$bgn <- bgn
-    initparam$bgnodes <- bgnodes
-    initparam$static <- bgnodes
-    initparam$mainnodes <- setdiff(seq_len(initparam$n), bgnodes)
-    initparam$nsmall <- length(initparam$mainnodes)
-    initparam$labels <- colnames(initparam$data)
-    initparam$labels.short <- initparam$labels
-    initparam$type <- "usr"
-    initparam$pctesttype <- "bge"
-    initparam$bgremove <- usrpar$bgremove
-    initparam$exps <- exps
-    initparam$expsrows <- expsrows
+{ 
+  obsdata <- initparam$data
+  N <- nrow(obsdata)
+  p <- ncol(obsdata)
 
-    initparam <- dpscoreparameters(initparam = initparam, usrpar = usrpar)
-    
-    sigmas <- vector("list", nrow(exps))
-    mus <- vector("list", nrow(exps))
-    Ns <- vector("list", nrow(exps))
-    
-    for (ii in 1:nrow(exps)) {
-      datalocal <- data[which(expsrows == ii), , drop = FALSE]
-      if (is.null(weightvector)) {
-        N <- nrow(datalocal)
-        covmat <- cov(datalocal) * (N - 1)
-        means <- colMeans(datalocal)
-      }
-      else {
-        weightvectorlocal <- weightvector[which(expsrows == ii)]
-        N <- sum(weightvectorlocal)
-        forcov <- cov.wt(datalocal, wt = weightvectorlocal, cor = TRUE, 
-                         method = "ML")
-        covmat <- forcov$cov * N
-        means <- forcov$center
-      }
-      sigmas[[ii]] <- covmat
-      mus[[ii]] <- means
-      Ns[[ii]] <- N
-    }
-    initparam$sigmas <- sigmas
-    initparam$mus <- mus
-    initparam$Ns <- Ns
-  } else {
-    initparam <- dpscoreparameters(initparam = initparam, usrpar = usrpar)
+  if (is.null(usrpar$Imat)) {
+  stop("Imat must be supplied.")
   }
+
+  Imat <- as.matrix(usrpar$Imat)
+  bgn <- ncol(Imat)
+  colnames(Imat) <- paste0("i", seq_len(bgn))
   
-  initparam$exps <- exps
-  initparam$expsrows <- expsrows
-  initparam
-}
-{
-  initparam <- dpscoreparameters(initparam = initparam, usrpar = usrpar)
-  initparam
-}
-dpscoreparameters <- function(initparam, 
-                               usrpar = list(pctesttype = "bge",
-                                             dp_mcmc = list(niter = 5000, nburn = 3000),
-                                             dp_prior = list(strength = 1, discount = 0, model="LS"),
-                                             dp_n_sample = 10,
-                                             dp_fits = 1,
-                                             membershipp_list = NULL,
-                                             am = 1, 
-                                             aw = NULL, 
-                                             T0scale = NULL,
-                                             edgepf = 1,
-                                             edgepmat = NULL
-                                             )
-                                       ) 
-{
+  exps <- mgcv::uniquecombs(Imat)
+  expsrows <- attr(exps, "index")
+
+  if (bgn == 0) {
+    stop("Imat must contain at least one intervention variable.")
+  }
+
+  if (nrow(exps) <= 1) {
+    stop("Imat contains only one experimental condition.")
+  }
   if (is.null(usrpar$dp_prior)) {
     usrpar$dp_prior <- list(strength = 1, discount = 0, model="LS")
   }
@@ -189,10 +129,10 @@ dpscoreparameters <- function(initparam,
     usrpar$am <- 1
   }
   if (is.null(usrpar$aw)) {
-    usrpar$aw <- initparam$n + usrpar$am + 1
+    usrpar$aw <- p + usrpar$am + 1
   }
   if (is.null(usrpar$T0scale)) {
-    usrpar$T0scale <- usrpar$am * (usrpar$aw - initparam$n - 1)/(usrpar$am + 1)
+    usrpar$T0scale <- usrpar$am * (usrpar$aw - p - 1)/(usrpar$am + 1)
   }
   if (is.null(usrpar$edgepmat)) {
     initparam$logedgepmat <- NULL
@@ -200,129 +140,164 @@ dpscoreparameters <- function(initparam,
   else {
     initparam$logedgepmat <- log(usrpar$edgepmat)
   }
+  
+
+
+  ## This is what DP-BGe uses.
+  initparam$obsdata <- obsdata
+
+  ## Augmented data is only for BiDAG graph indexing.
+  initparam$data <- cbind(Imat, obsdata)
+
+  initparam$bgn <- bgn
+  initparam$bgnodes <- seq_len(bgn)
+  initparam$static <- seq_len(bgn)
+  initparam$mainnodes <- bgn + seq_len(p)
+
+  initparam$n <- bgn + p
+  initparam$nsmall <- p
+
+  initparam$labels <- colnames(initparam$data)
+  initparam$labels.short <- initparam$labels
+  
+  initparam$exps <- exps
+  initparam$expsrows <- expsrows
+
   initparam$dp_prior <- usrpar$dp_prior
   initparam$dp_mcmc <- usrpar$dp_mcmc
   initparam$dp_fits <- usrpar$dp_fits
   initparam$dp_n_sample <- usrpar$dp_n_sample
+  initparam$dp_membershipp_list <- usrpar$membershipp_list
+
   initparam$pf <- usrpar$edgepf
   initparam$am <- usrpar$am
   initparam$aw <- usrpar$aw
   initparam$T0scale <- usrpar$T0scale
   
-  # save for bge params later
-  bgeinitparam <- initparam
-  bgeinitparam$type <- "bge"
+  if (bgn == 0 || nrow(exps) <= 1) {
+    stop("Need at least one intervention variable and at least two experimental conditions.")
+  }
 
-  
   # only depending on n
-  n = initparam$n
+  n = initparam$nsmall
   mu0 <- numeric(n)
   T0 <- diag(usrpar$T0scale, n, n)
+
+  # start actual ibge
+  sigmas <- vector("list", nrow(exps))
+  mus <- vector("list", nrow(exps))
+  Ns <- vector("list", nrow(exps))
+  initparam$i_dp_scoreparam_list <- vector("list", nrow(exps))
   
-  # loop over all DPs
-  dp_membershipp_list<- usrpar$membershipp_list
-  n_dp <- length(dp_membershipp_list)
-  initparam$dp_scoreparam_list <- vector("list", n_dp)
-  mu_sum <- numeric(n)
-  cov_sum <- matrix(0, n, n)
-  for (d in 1:n_dp){
-    membershipp_list = dp_membershipp_list[[d]]$membershipp
-    L <- length(membershipp_list)
-    scoreparam_list <- vector("list", L)
-    for (l in 1:L) {
-      membershipp = membershipp_list[[l]]
-      K = ncol(membershipp)
-      Nk <- numeric(K)
-      means <- vector("list", K)
-      covs <- vector("list", K)
-      TN <- vector("list", K)
-      awpN <- numeric(K)
-      constscorefact <- numeric(K)
-      for (k in  1:K){
-        weightvector = membershipp[,k]
-        Nk[k] <- sum(weightvector)
-        forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
-        covs[[k]] <- forcov$cov
-        covmatk <- forcov$cov * Nk[k]
-        means[[k]] <- forcov$center
-        TN[[k]] <- T0 + covmatk + 
-          ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
-          (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
-        awpN[k] = usrpar$aw + Nk[k]
-        constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
+  for (ii in 1:nrow(exps)) {
+    datalocal <- obsdata[which(expsrows == ii), , drop = FALSE]
+    # loop over all DPs
+    dp_membershipp_list<- usrpar$membershipp_list
+    n_dp <- length(dp_membershipp_list)
+    dp_scoreparam_list <- vector("list", n_dp)
+    mu_sum <- numeric(n)
+    cov_sum <- matrix(0, n, n)
+    for (d in 1:n_dp){
+      membershipp_list = dp_membershipp_list[[d]]$membershipp
+      L <- length(membershipp_list)
+      scoreparam_list <- vector("list", L)
+      for (l in 1:L) {
+        membershipp <- membershipp_list[[l]][which(expsrows == ii), , drop = FALSE]
+        K = ncol(membershipp)
+        Nk <- numeric(K)
+        means <- vector("list", K)
+        covs <- vector("list", K)
+        TN <- vector("list", K)
+        awpN <- numeric(K)
+        constscorefact <- numeric(K)
+        for (k in  1:K){
+          weightvector = membershipp[,k]
+          Nk[k] <- sum(weightvector)
+          forcov <- cov.wt(datalocal, wt = weightvector, method = "ML")
+          covs[[k]] <- forcov$cov
+          covmatk <- forcov$cov * Nk[k]
+          means[[k]] <- forcov$center
+          TN[[k]] <- T0 + covmatk + 
+            ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
+            (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+          awpN[k] = usrpar$aw + Nk[k]
+          constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
+        }
+        
+        N <- sum(Nk)
+        clusterWeights <- Nk/N
+
+        scoreconstvec <- numeric(n)
+        for (j in (1:n)) {
+          awp <- usrpar$aw - n + j
+          scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
+            sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
+            j * log(initparam$pf)
+        }
+
+        # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
+        mu_bar <- Reduce("+", Map(function(mu, w) w * mu, means, clusterWeights))
+        cov_bar <- Reduce("+", Map(function(S, w) w * S, covs, clusterWeights))
+        mu_sum <- mu_sum + mu_bar
+        cov_sum <- cov_sum + cov_bar
+
+        # save score params for DP_list[l]
+        scoreparam_list[[l]] <- list(
+          K = K,
+          TN = TN,
+          awpN = awpN,
+          scoreconstvec = scoreconstvec,
+          clusterWeights = clusterWeights
+        )
       }
-      
-      N <- sum(Nk)
-      clusterWeights <- Nk/N
-
-      scoreconstvec <- numeric(n)
-      for (j in (1:n)) {
-        awp <- usrpar$aw - n + j
-        scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
-          sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
-          j * log(initparam$pf)
-      }
-
-      # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
-      mu_bar <- Reduce("+", Map(function(mu, w) w * mu, means, clusterWeights))
-      cov_bar <- Reduce("+", Map(function(S, w) w * S, covs, clusterWeights))
-      mu_sum <- mu_sum + mu_bar
-      cov_sum <- cov_sum + cov_bar
-
-      # save score params for DP_list[l]
-      scoreparam_list[[l]] <- list(
-        K = K,
-        TN = TN,
-        awpN = awpN,
-        scoreconstvec = scoreconstvec,
-        clusterWeights = clusterWeights
+      dp_scoreparam_list[[d]] <- list(
+        meta = list(
+          child   = dp_membershipp_list[[d]]$child,
+          parents = dp_membershipp_list[[d]]$parents,
+          vars    = dp_membershipp_list[[d]]$vars
+        ),
+        scores = scoreparam_list
       )
     }
-    initparam$dp_scoreparam_list[[d]] <- list(
-      meta = list(
-        child   = dp_membershipp_list[[d]]$child,
-        parents = dp_membershipp_list[[d]]$parents,
-        vars    = dp_membershipp_list[[d]]$vars
-      ),
-      scores = scoreparam_list
-    )
-  }
 
-  # set up bge params with averaged means and covs across DPs
-  N <- nrow(initparam$data)
-  means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
-  covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
-  covmat  <- covmat * (N - 1)
-  bgeinitparam$means  <- means
-  bgeinitparam$covmat  <- covmat
-  bgeinitparam$N <- N
-  mu0 <- numeric(n)
-  T0scale <- usrpar$am * (usrpar$aw - n - 1)/(usrpar$am + 
-      1)
-  T0 <- diag(T0scale, n, n)
-  bgeinitparam$TN <- T0 + covmat + ((usrpar$am * N)/(usrpar$am + 
-      N)) * (mu0 - means) %*% t(mu0 - means)
-  bgeinitparam$awpN <- usrpar$aw + N
-  constscorefact <- -(N/2) * log(pi) + (1/2) * log(usrpar$am/(usrpar$am + 
-      N))
-  bgeinitparam$muN <- (N * means + usrpar$am * mu0)/(N + usrpar$am)
-  bgeinitparam$SigmaN <- bgeinitparam$TN/(bgeinitparam$awpN - n - 
-      1)
-  bgeinitparam$scoreconstvec <- numeric(n)
-  for (j in (1:n)) {
-      awp <- usrpar$aw - n + j
-      bgeinitparam$scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
-          lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(T0scale) - 
-          j * log(bgeinitparam$pf)
+    # set up bge params with averaged means and covs across DPs
+    N <- nrow(datalocal)
+    means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
+    covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
+    covmat  <- covmat * (N - 1)
+
+    sigmas[[ii]] <- covmat
+    mus[[ii]] <- means
+    Ns[[ii]] <- N
+    initparam$i_dp_scoreparam_list[[ii]] <- dp_scoreparam_list
   }
-  attr(bgeinitparam, "class") <- "scoreparameters"
-  initparam$bgeinitparam <- bgeinitparam
+  initparam$sigmas <- sigmas
+  initparam$mus <- mus
+  initparam$Ns <- Ns
+
+  initparam$exps <- exps
+  initparam$expsrows <- expsrows
 
   initparam
 }
 usrDAGcorescore <- function (j, parentnodes, n, param) {
-  BiDAG:::DAGcorescore(j, parentnodes, n, param$bgeinitparam)
+  iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
+  parents <- setdiff(parentnodes, iparents)
+  # find the different exp conditions for these parents
+  local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
+  outscore <- 0
+  for (ii in 1:max(local_exps)) {
+    local_stats <- combinecovs(param$sigmas, param$mus, param$Ns, which(local_exps == ii), c(j, parents) - param$bgn)
+    localparam <- BGeaugment(local_stats$sigma, local_stats$mu, local_stats$N, param$n, param$am, param$aw, param$logedgepmat)
+    if (length(parents) > 0) {
+      outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, param$n, localparam)
+    }  else {
+      outscore <- outscore + BiDAG:::DAGcorescore(1, parents, param$n, localparam)
+    }
+  }
+  outscore
 }
+
 targetCoreScore <- function (j, parentnodes, n, param, l) {
   # not depending on cluster param
   lp <- length(parentnodes)
