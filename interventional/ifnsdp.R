@@ -264,7 +264,7 @@ usrscoreparameters <- function(initparam,
     N <- nrow(datalocal)
     means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
     covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
-    covmat  <- covmat * (N - 1)
+    covmat  <- covmat * N
 
     sigmas[[ii]] <- covmat
     mus[[ii]] <- means
