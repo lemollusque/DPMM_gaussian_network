@@ -69,6 +69,33 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, vars 
   membershipp_list
 }
 #----------------------  BiDAG ----------------------------------
+# helper function
+BGeaugment <- function(sigma, mu, N, n, am, aw, logedgepmat, pf) {
+  mu0 <- numeric(length(mu))
+  T0scale <- am * (aw - n - 1)/(am + 1)
+  T0 <- diag(T0scale, length(mu), length(mu))
+  TN <- T0 + sigma + ((am * N)/(am + N)) * (mu0 - mu) %*% t(mu0 - mu)
+  awpN <- aw + N
+  constscorefact <- -(N/2) * log(pi) + (1/2) * log(am/(am + N))
+  muN <- (N * mu + am * mu0)/(N + am)
+  SigmaN <- TN/(awpN - n - 1)
+  scoreconstvec <- numeric(length(mu))
+  for (j in (1:length(mu))) {
+    awp <- aw - n + j
+    scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
+      lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(T0scale) - j * log(pf)
+  }
+  localparam <- list()
+  localparam$type <- "bge"
+  localparam$TN <- TN
+  localparam$awpN <- awpN
+  localparam$n <- n
+  localparam$scoreconstvec <- scoreconstvec
+  localparam$DBN <- FALSE
+  localparam$MDAG <- FALSE
+  localparam$logedgepmat <- logedgepmat
+  return(localparam)
+}
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
                                              dp_mcmc = list(niter = 5000, nburn = 3000),
@@ -124,12 +151,7 @@ usrscoreparameters <- function(initparam,
   initparam$am <- usrpar$am
   initparam$aw <- usrpar$aw
   initparam$T0scale <- usrpar$T0scale
-  
-  # save for bge params later
-  bgeinitparam <- initparam
-  bgeinitparam$type <- "bge"
-
-  
+    
   # only depending on n
   n = initparam$n
   mu0 <- numeric(n)
@@ -175,8 +197,7 @@ usrscoreparameters <- function(initparam,
       for (j in (1:n)) {
         awp <- usrpar$aw - n + j
         scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
-          sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
-          j * log(initparam$pf)
+          sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) 
       }
 
       # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
@@ -208,30 +229,8 @@ usrscoreparameters <- function(initparam,
   N <- nrow(initparam$data)
   means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
   covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
-  covmat  <- covmat * (N - 1)
-  bgeinitparam$means  <- means
-  bgeinitparam$covmat  <- covmat
-  bgeinitparam$N <- N
-  mu0 <- numeric(n)
-  T0scale <- usrpar$am * (usrpar$aw - n - 1)/(usrpar$am + 
-      1)
-  T0 <- diag(T0scale, n, n)
-  bgeinitparam$TN <- T0 + covmat + ((usrpar$am * N)/(usrpar$am + 
-      N)) * (mu0 - means) %*% t(mu0 - means)
-  bgeinitparam$awpN <- usrpar$aw + N
-  constscorefact <- -(N/2) * log(pi) + (1/2) * log(usrpar$am/(usrpar$am + 
-      N))
-  bgeinitparam$muN <- (N * means + usrpar$am * mu0)/(N + usrpar$am)
-  bgeinitparam$SigmaN <- bgeinitparam$TN/(bgeinitparam$awpN - n - 
-      1)
-  bgeinitparam$scoreconstvec <- numeric(n)
-  for (j in (1:n)) {
-      awp <- usrpar$aw - n + j
-      bgeinitparam$scoreconstvec[j] <- constscorefact - lgamma(awp/2) + 
-          lgamma((awp + N)/2) + ((awp + j - 1)/2) * log(T0scale) - 
-          j * log(bgeinitparam$pf)
-  }
-  attr(bgeinitparam, "class") <- "scoreparameters"
+  covmat  <- covmat * N
+  bgeinitparam <- BGeaugment(covmat, means, N, n, usrpar$am, usrpar$aw, initparam$logedgepmat, initparam$pf)
   initparam$bgeinitparam <- bgeinitparam
 
   initparam
