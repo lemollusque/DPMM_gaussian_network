@@ -528,31 +528,7 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   dp.fit$traceadd$incidence <- dp.fit$traceadd$incidence[-(1:toburn)]
   dp.fit$trace <- dp.fit$trace[-(1:toburn)]
   ndags <- length(dp.fit$trace)
-
-  # compute weights for all sampled unique DAGs
-  dag_key <- function(dag) {
-    paste(c(dim(dag), as.integer( 1 * as(dag, "matrix"))), collapse = "_")
-  }
-  dags <- dp.fit$traceadd$incidence
-  keys <- vapply(dags, dag_key, character(1))
-  unique_keys <- unique(keys)
-  first_idx <- match(unique_keys, keys)
-  unique_scores <- numeric(length(unique_keys))
-  names(unique_scores) <- unique_keys
-
-  for (u in seq_along(unique_keys)) {
-    dag <- dags[[first_idx[u]]]
-
-    unique_scores[u] <- DPscoreDAG(
-      param = Score,
-      dag = dag
-    )
-  }
-
-  target_scores <- unname(unique_scores[keys])
-  weights <- target_scores - dp.fit$trace
-
-  dp.fit$weights <- weights - logSumExp(weights)
+  
   end <- Sys.time()
   time2 <- end - inter
   time <- end - start + searchspace$time

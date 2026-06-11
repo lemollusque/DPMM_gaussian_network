@@ -1,10 +1,10 @@
 # load libraries
 library(pcalg)
 library(graph)
-source("../Rfns/intfns.R") # load other functions
+source("./intfns.R") # load other functions
 
 ## Sachs data
-sachs_data <- read.csv("./sachsdata/sachs.csv", sep = "\t")
+sachs_data <- read.csv("../Sachs/sachs_data_int.csv", sep = "\t")
 # we take the first 7 experiments following Wang et al
 sachs_data_sel <- sachs_data[which(sachs_data[, 12] < 8), ]
 Ts <- sachs_data_sel[, 12] - 1
@@ -93,9 +93,9 @@ trueEGwang <- DAG2EG(trueDAGwang, targets)
 
 
 # write files
-if (!file.exists("./sachsdata/sachs_data_sel.csv")) {
-  write.csv(data, "./sachsdata/sachs_data_sel.csv", 
+if (!file.exists("../Sachs/sachs_data_sel.csv")) {
+  write.csv(data, "../Sachs/sachs_data_sel.csv", 
             row.names = FALSE)
-  write.csv(Ts, "./sachsdata/sachs_Ts.csv", 
+  write.csv(Ts, "../Sachs/sachs_Ts.csv", 
             row.names = FALSE)
 }

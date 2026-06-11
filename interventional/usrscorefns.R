@@ -15,7 +15,7 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
   expsrows <- attr(exps, "index") # rows with each condition
  
   if (bgn > 0 && nrow(exps) > 1) {
-    initparam <- scoreparameters(scoretype = "bge", data = cbind(Imat,data), weightvector = weightvector, bgnodes = 1:ncol(Imat), bgepar = list(am = am_value),
+    initparam <- scoreparameters(scoretype = "bge", data = cbind(Imat,data), weightvector = weightvector, bgnodes = 1:ncol(Imat), bgepar = list(am = usrpar$am),
                                  edgepmat = usrpar$edgepmat)
     initparam$type <- "usr" # make sure it knows that we have redefined the score
     initparam$pctesttype <- "bge"
@@ -47,7 +47,7 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
     initparam$mus <- mus
     initparam$Ns <- Ns
   } else {
-    initparam <- scoreparameters(scoretype = "bge", data = data, bgepar = list(am = am_value),
+    initparam <- scoreparameters(scoretype = "bge", data = data, bgepar = list(am = usrpar$am),
                                  edgepmat = usrpar$edgepmat)
   }
   

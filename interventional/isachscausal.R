@@ -1,18 +1,27 @@
 
 # preprocessing etc of the Sachs data
-source("./sachssetup.R")
+source("./isachssetup.R")
 
 # load libraries
 library(BiDAG)
 library(Bestie)
 
+library(foreach)
+library(doFuture)
+library(future)
+library(parallelly)
+library(mclust)
+library(progressr)
+library(doRNG)
+
 # Use BiDAG with intervention scoring
-insertSource("../usrscorefns.R", package = "BiDAG")
+insertSource("usrscorefns.R", package = "BiDAG")
 # Use Bestie with intervention scoring
-insertSource("../usrparamfns.R", package = "Bestie")
+insertSource("usrparamfns.R", package = "Bestie")
 
 # load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
-source("../Rfns/toyDAGfunctionsSachs.R")
+source("itoyDAGfunctionsSachs.R")
+source("intfns.R")
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -26,7 +35,19 @@ batch <- 100 + 1:nSeeds
 labels4plot <- colnames(inputData) 
 nNodes <- length(labels4plot)
 
-for(seednumber in batch){
+plan(multisession, workers = min(length(batch), availableCores()-1))
+registerDoFuture()
+
+foreach(
+  seednumber = batch,
+  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
+) %dorng% {
+  
+  insertSource("usrscorefns.R", package = "BiDAG")
+  # Use Bestie with intervention scoring
+  insertSource("usrparamfns.R", package = "Bestie")
+  source("intfns.R")
+  
   timing <- proc.time()
   print(paste("Seed is", seednumber))
   sampleDAGs(inData=inputData, scoretype = "usr",
@@ -34,6 +55,7 @@ for(seednumber in batch){
              nDigraphs=nDAGs, seed=seednumber)
   computeEffects(n=nNodes, seed=seednumber)
   print(proc.time() - timing)
+  TRUE
 }
 
 data4plot <- loadsamples(seeds=batch, nn=nNodes)
