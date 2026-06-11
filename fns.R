@@ -84,6 +84,24 @@ usrscoreparameters <- function(initparam,
                                              )
                                        ) 
 {
+  initparam <- dpscoreparameters(initparam = initparam, usrpar = usrpar)
+  initparam
+}
+dpscoreparameters <- function(initparam, 
+                               usrpar = list(pctesttype = "bge",
+                                             dp_mcmc = list(niter = 5000, nburn = 3000),
+                                             dp_prior = list(strength = 1, discount = 0, model="LS"),
+                                             dp_n_sample = 10,
+                                             dp_fits = 1,
+                                             membershipp_list = NULL,
+                                             am = 1, 
+                                             aw = NULL, 
+                                             T0scale = NULL,
+                                             edgepf = 1,
+                                             edgepmat = NULL
+                                             )
+                                       ) 
+{
   if (is.null(usrpar$dp_prior)) {
     usrpar$dp_prior <- list(strength = 1, discount = 0, model="LS")
   }
