@@ -105,10 +105,10 @@ for (nlevel in 1:nSeeds) {
   seednumber <- batch[nlevel]
   ## Retrieve sampled DAGs - DAG chain
   load(file = paste0("./Sachs/saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
-  alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs[-1] # remove the starting point
+  alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs # remove the starting point
   ## Retrieve estimated effects
   load(file = paste0("./Sachs/saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
-  alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats[-1] # remove the starting point
+  alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats # remove the starting point
 }
 data4plot = list(alldigraphs=alldigraphs, alleffs=alleffs)
 

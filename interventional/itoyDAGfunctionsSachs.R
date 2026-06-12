@@ -123,10 +123,10 @@ loadsamples <- function(seeds, nn, dname = "") {
     seednumber <- seeds[nlevel]
     ## Retrieve sampled DAGs - DAG chain
     load(file = paste0("./saveout/dagdraw", nn, "seed", seednumber, dname, ".RData"))
-    alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs[-1] # remove the starting point
+    alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs # remove the starting point
     ## Retrieve estimated effects
     load(file = paste0("./saveout/effects", nn, "seed", seednumber, dname, ".RData"))
-    alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats[-1] # remove the starting point
+    alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats # remove the starting point
   }
   list(alldigraphs=alldigraphs, alleffs=alleffs)
 }
