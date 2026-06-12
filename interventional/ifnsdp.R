@@ -71,8 +71,8 @@ add_membershipp <- function(membershipp_list, membershipp, child, parents, vars 
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
-                                             dp_mcmc = list(niter = 5000, nburn = 3000),
-                                             dp_prior = list(strength = 1, discount = 0, model="LS"),
+                                             dp_mcmc = list(niter = 5000, nburn = 3000, model="LS"),
+                                             dp_prior = list(strength = 1, discount = 0),
                                              dp_n_sample = 10,
                                              dp_fits = 1,
                                              membershipp_list = NULL,
@@ -129,7 +129,7 @@ usrscoreparameters <- function(initparam,
     usrpar$am <- 1
   }
   if (is.null(usrpar$aw)) {
-    usrpar$aw <- p + usrpar$am + 1
+    usrpar$aw <- bgn + p+ usrpar$am + 1
   }
   if (is.null(usrpar$T0scale)) {
     usrpar$T0scale <- usrpar$am * (usrpar$aw - p - 1)/(usrpar$am + 1)
@@ -203,6 +203,10 @@ usrscoreparameters <- function(initparam,
       scoreparam_list <- vector("list", L)
       for (l in 1:L) {
         membershipp <- membershipp_list[[l]][which(expsrows == ii), , drop = FALSE]
+        
+        keep <- colSums(membershipp) > 0
+        membershipp <- membershipp[, keep, drop = FALSE]
+
         K = ncol(membershipp)
         Nk <- numeric(K)
         means <- vector("list", K)
@@ -213,6 +217,7 @@ usrscoreparameters <- function(initparam,
         for (k in  1:K){
           weightvector = membershipp[,k]
           Nk[k] <- sum(weightvector)
+          cat(Nk[k], "\n ")
           forcov <- cov.wt(datalocal, wt = weightvector, method = "ML")
           covs[[k]] <- forcov$cov
           covmatk <- forcov$cov * Nk[k]
@@ -278,25 +283,79 @@ usrscoreparameters <- function(initparam,
   initparam$exps <- exps
   initparam$expsrows <- expsrows
 
+  ############################################
+  ## DP-averaged BGe fallback
+  mu_sum <- numeric(n)
+  cov_sum <- matrix(0, n, n)
+
+  for (d in 1:n_dp){
+    membershipp_list = dp_membershipp_list[[d]]$membershipp
+    L <- length(membershipp_list)
+    scoreparam_list <- vector("list", L)
+    for (l in 1:L) {
+      membershipp = membershipp_list[[l]]
+      K = ncol(membershipp)
+      Nk <- numeric(K)
+      means <- vector("list", K)
+      covs <- vector("list", K)
+      for (k in  1:K){
+        weightvector = membershipp[,k]
+        Nk[k] <- sum(weightvector)
+        forcov <- cov.wt(obsdata, wt = weightvector, method = "ML")
+        covs[[k]] <- forcov$cov
+        means[[k]] <- forcov$center
+      }
+      
+      N <- sum(Nk)
+      clusterWeights <- Nk/N
+      # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
+      mu_bar <- Reduce("+", Map(function(mu, w) w * mu, means, clusterWeights))
+      cov_bar <- Reduce("+", Map(function(S, w) w * S, covs, clusterWeights))
+      mu_sum <- mu_sum + mu_bar
+      cov_sum <- cov_sum + cov_bar
+    }
+  }
+
+  # set up bge params with averaged means and covs across DPs
+  N <- nrow(obsdata)
+  means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
+  covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
+  covmat  <- covmat * N
+  bgeinitparam <- BGeaugment(covmat, means, N, n, usrpar$am, usrpar$aw, initparam$logedgepmat)
+  initparam$bgeinitparam <- bgeinitparam
+
   initparam
 }
 usrDAGcorescore <- function (j, parentnodes, n, param) {
   iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
-  parents <- setdiff(parentnodes, iparents)
-  # find the different exp conditions for these parents
-  local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
-  outscore <- 0
-  for (ii in 1:max(local_exps)) {
-    local_stats <- combinecovs(param$sigmas, param$mus, param$Ns, which(local_exps == ii), c(j, parents) - param$bgn)
-    localparam <- BGeaugment(local_stats$sigma, local_stats$mu, local_stats$N, param$n, param$am, param$aw, param$logedgepmat)
-    if (length(parents) > 0) {
-      outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, param$n, localparam)
-    }  else {
-      outscore <- outscore + BiDAG:::DAGcorescore(1, parents, param$n, localparam)
+  
+  if (length(iparents) == 0 || nrow(param$exps) < 2) {# use standard BGe score
+    localparam <- param$bgeinitparam
+    localparam$type <- "bge"
+    outscore <- BiDAG:::DAGcorescore(
+    j = j - param$bgn,
+    parentnodes = parentnodes - param$bgn,
+    n = param$nsmall,
+    param = localparam
+  )
+  } else {
+    parents <- setdiff(parentnodes, iparents)
+    # find the different exp conditions for these parents
+    local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
+    outscore <- 0
+    for (ii in 1:max(local_exps)) {
+      local_stats <- combinecovs(param$sigmas, param$mus, param$Ns, which(local_exps == ii), c(j, parents) - param$bgn)
+      localparam <- BGeaugment(local_stats$sigma, local_stats$mu, local_stats$N, param$n, param$am, param$aw, param$logedgepmat)
+      if (length(parents) > 0) {
+        outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, param$n, localparam)
+      }  else {
+        outscore <- outscore + BiDAG:::DAGcorescore(1, parents, param$n, localparam)
+      }
     }
   }
   outscore
 }
+
 
 targetCoreScore <- function (j, parentnodes, n, param, l) {
   # not depending on cluster param
@@ -383,64 +442,12 @@ DPscoreDAG <- function(param, dag) {
   }
   logMeanExpLogs (dag_scores)
 }
-#----------------------  test functions ----------------------------------
-test_dag_score_equivalence <- function(usr_score_param,
-                                       dags, 
-                                       tol = 1e-4,
-                                       verbose = TRUE) {
-  if (is.null(names(dags)) || any(names(dags) == "")) {
-    names(dags) <- paste0("DAG_", seq_along(dags))
-  }
-  
-  # score all dags
-  scores <- unlist(lapply(dags, function(A) DPscoreDAG(usr_score_param, A)))
-  
-  # pairwise differences
-  diffs <- outer(scores, scores, FUN = "-")
-  
-  # pass/fail: all equal within tol?
-  all_equal <- max(abs(diffs)) < tol
-  
-  if (verbose) {
-    cat("Total scores:\n")
-    print(scores)
-    cat("\nMax |pairwise diff|:", max(abs(diffs)), "\n")
-    cat("All equal?", all_equal, "\n\n")
-  }
-  
-  all_equal
-}
-test_compare_dp_vs_bge <- function(usr_score_param,
-                                   bge_score_param,
-                                   dags,tol = 1e-4,
-                                   verbose = TRUE) {
-  if (is.null(names(dags)) || any(names(dags) == "")) {
-    names(dags) <- paste0("DAG_", seq_along(dags))
-  }
-  
-  # score all dags
-  scores <- unlist(lapply(dags, function(A) DPscoreDAG(usr_score_param, A)))
-  bge_scores <- unlist(lapply(dags, function(A) BiDAG::DAGscore(bge_score_param, A)))
-  
-  diffs = scores-bge_scores
-  equal <- max(abs(diffs)) < tol
-  
-  if (verbose) {
-    cat("Total dp scores:\n")
-    print(scores)
-    cat("Total bge scores:\n")
-    print(bge_scores)
-    cat("Equal?", equal, "\n\n")
-  }
-  equal
-}
-
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Run MCMC
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
-  cor_mat <- cor(data)
+  cor_mat <- cor(cbind(Imat, data))
   startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
 
   if(method == "DP") {
@@ -461,7 +468,8 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
       fitspace <- 1 * (graph2m(g))
     }
     if(usrpar$dp_fitspace == "dual") {
-      fitspace <- startspace
+      cor_mat <- cor(data)
+      fitspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
     }  
     if(usrpar$dp_fitspace == "full") {
       fitspace <- 1 - diag(ncol(data))
