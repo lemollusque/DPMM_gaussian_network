@@ -1,7 +1,8 @@
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Sample DAGs with BiDAG
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, seed=101, dname="", ...){
+sampleDAGs <- function(inData, searchspace, weighted = FALSE, nDigraphs = 50, seed=101, dname="", ...){
+  scoreObject <- searchspace$score
   scoreObject$data = inData
   scoreObject$nodeslabels = colnames(inData)
 
@@ -18,16 +19,14 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
     ## set the seed for the generation of random numbers (for reproducibility)
     
     # find the search space with iterative search
-    itFit <- iterativeMCMC(scoreObject,
-                           scoreout = TRUE, compress = FALSE) ## find iterative search space
-    searchSpace <- itFit$endspace
+    endspace <- searchspace$endspace
     
     # sample a starting DAG with order MCMC
     # the default length of the chain is 6*n^2/log(n)
     # orderSample$score is the score for the highest scoring DAG found
     orderSample <- orderMCMC(scoreObject, 
                              MAP = FALSE, 
-                             startspace = searchSpace, 
+                             startspace = endspace, 
                              chainout = TRUE,
                              compress = FALSE)
     startDAG <- last(orderSample$traceadd$incidence) # extract selected (last) DAG
@@ -35,7 +34,7 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
     
     # sample an ensemble of nDAGs DAGs from the posterior by using partition MCMC
     partitionSample <- partitionMCMC(scoreObject, 
-                                     startspace = searchSpace, 
+                                     startspace = endspace, 
                                      startDAG = startDAG, 
                                      iterations = iterations, 
                                      stepsave = stepsave,
