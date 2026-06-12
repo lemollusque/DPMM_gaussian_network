@@ -63,8 +63,8 @@ part <- partition(fit)
 hard_clusters <- part$partitions[1, ]
 table(hard_clusters)
 
-data = sachs.data[hard_clusters == 3,]
-dname = "cluster3"
+data = sachs.data[hard_clusters == 1,]
+dname = "cluster1"
 
 nDAGs <- 50
 nSeeds <- 50

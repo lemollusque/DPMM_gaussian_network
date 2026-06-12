@@ -98,8 +98,8 @@ BGeaugment <- function(sigma, mu, N, n, am, aw, logedgepmat, pf) {
 }
 usrscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
-                                             dp_mcmc = list(niter = 5000, nburn = 3000),
-                                             dp_prior = list(strength = 1, discount = 0, model="LS"),
+                                             dp_mcmc = list(niter = 5000, nburn = 3000, model="LS"),
+                                             dp_prior = list(strength = 1, discount = 0),
                                              dp_n_sample = 10,
                                              dp_fits = 1,
                                              membershipp_list = NULL,
