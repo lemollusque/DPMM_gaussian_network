@@ -40,7 +40,7 @@ bge.par = 0.01
 dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
-  dp_prior = list(strength = 0.0005, discount = 0),
+  dp_prior = list(strength = 1, discount = 0),
   dp_mcmc = list(niter = 4000, nburn = 3000, model="LS"),
   dp_n_sample = 100,
   dp_fits = 1,
@@ -51,7 +51,7 @@ output <- list(out_param = TRUE, out_type = "FULL")
 
 cor_mat <- cor(sachs.data)
 fitspace <- dual_pc(cor_mat, nrow(sachs.data), alpha = 0.05, skeleton = T)
-child = "PIP2"
+child = "Jnk"
 parents <- names(which(fitspace[ , child] == 1))
 children <- names(which(fitspace[child, ] == 1))
 neighbour <- setdiff(unique(c(parents, children)), child)
