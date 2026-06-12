@@ -1,7 +1,8 @@
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Sample DAGs with BiDAG
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, seed=101, dname="", ...){
+sampleDAGs <- function(inData, searchspace, weighted = FALSE, nDigraphs = 50, seed=101, dname="", ...){
+  scoreObject <- searchspace$score
   scoreObject$data = inData
   scoreObject$nodeslabels = colnames(inData)
 
@@ -18,16 +19,14 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
     ## set the seed for the generation of random numbers (for reproducibility)
     
     # find the search space with iterative search
-    itFit <- iterativeMCMC(scoreObject,
-                           scoreout = TRUE, compress = FALSE) ## find iterative search space
-    searchSpace <- itFit$endspace
+    endspace <- searchspace$endspace
     
     # sample a starting DAG with order MCMC
     # the default length of the chain is 6*n^2/log(n)
     # orderSample$score is the score for the highest scoring DAG found
     orderSample <- orderMCMC(scoreObject, 
                              MAP = FALSE, 
-                             startspace = searchSpace, 
+                             startspace = endspace, 
                              chainout = TRUE,
                              compress = FALSE)
     startDAG <- last(orderSample$traceadd$incidence) # extract selected (last) DAG
@@ -35,7 +34,7 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
     
     # sample an ensemble of nDAGs DAGs from the posterior by using partition MCMC
     partitionSample <- partitionMCMC(scoreObject, 
-                                     startspace = searchSpace, 
+                                     startspace = endspace, 
                                      startDAG = startDAG, 
                                      iterations = iterations, 
                                      stepsave = stepsave,
@@ -83,16 +82,6 @@ sampleDAGs <- function(inData, scoreObject, weighted = FALSE, nDigraphs = 50, se
          file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
   }
 }  
-makeTrueDAGSamples <- function(truegraph, nDAGs) {
-  sampledDAGs <- replicate(nDAGs + 1, truegraph, simplify = FALSE)
-  sampledDAGs <- lapply(sampledDAGs, function(A) {
-    A <- as.matrix(A)
-    colnames(A) <- rownames(A) <- colnames(truegraph)
-    A
-  })
-  
-  sampledDAGs
-}
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Compute intervention effects with Bestie
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -123,31 +112,6 @@ computeEffects <- function(n, seed=101, dname="", DP=FALSE){
     }
   } else(warning("Looking for causal effects without a DAG? Try runif()!"))
 }
-computeEffects_mem <- function(sampledDAGs, scoreObject, DP = FALSE) {
-  if (DP) {
-    DP_DAGintervention(
-      incidences = sampledDAGs,
-      dataParams = scoreObject,
-      sample = TRUE
-    )
-  } else {
-    DAGintervention(sampledDAGs, scoreObject, sample = TRUE)
-  }
-}
-sampleTrueEffects <- function(Eff1, Eff2, n1, n2, labels = NULL, nSamples = 1000) {
-  n <- nrow(Eff1)
-  ntot <- n1 + n2
-  out <- vector("list", nSamples)
-  for (s in seq_len(nSamples)) {
-    M <- if (runif(1) < n1 / ntot) Eff1 else Eff2
-    
-    if (!is.null(labels)) {
-      colnames(M) <- rownames(M) <- labels
-    }
-    out[[s]] <- M
-  }
-  out
-}
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load collection of sampled DAGs and effects
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -166,9 +130,6 @@ loadsamples <- function(seeds, nn, dname = "") {
   }
   list(alldigraphs=alldigraphs, alleffs=alleffs)
 }
-
-
-
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Internal function to set-up plot style
 ## Define some default plotting settings for the effects

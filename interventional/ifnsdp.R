@@ -217,7 +217,6 @@ usrscoreparameters <- function(initparam,
         for (k in  1:K){
           weightvector = membershipp[,k]
           Nk[k] <- sum(weightvector)
-          cat(Nk[k], "\n ")
           forcov <- cov.wt(datalocal, wt = weightvector, method = "ML")
           covs[[k]] <- forcov$cov
           covmatk <- forcov$cov * Nk[k]
