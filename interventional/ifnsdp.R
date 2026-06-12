@@ -356,13 +356,13 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
 }
 
 
-targetCoreScore <- function (j, parentnodes, n, param, l) {
+targetCoreScore <- function (j, parentnodes, n, param, l, condition) {
   # not depending on cluster param
   lp <- length(parentnodes)
   # extract needed score parameters
   needed <- c(j, parentnodes)
   
-  scoreparam_list = unlist(lapply(param$dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
+  scoreparam_list <- unlist(lapply(param$i_dp_scoreparam_list[[condition]], `[[`, "scores"), recursive = FALSE)
   scoreparam <- scoreparam_list[[l]]
   K=scoreparam$K
   TN <- scoreparam$TN
@@ -425,21 +425,60 @@ targetCoreScore <- function (j, parentnodes, n, param, l) {
   corescore
 }
 DPscoreDAG <- function(param, dag) {
-  n <- ncol(dag)
-  scoreparam_list = unlist(lapply(param$dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
-  L <- length(scoreparam_list)
+  n_aug <- ncol(dag)
+  ## assume same number of DP samples in each condition
+  scoreparam_list_1 <- unlist(
+    lapply(param$i_dp_scoreparam_list[[1]], `[[`, "scores"),
+    recursive = FALSE
+  )
+  L <- length(scoreparam_list_1)
   dag_scores <- numeric(L)
 
-  for(l in 1:L){
+  for (l in seq_len(L)) {
     curr_score <- 0
-    for(x in 1:n) {
+
+    for (x in seq_len(n_aug)) {
+
+      if (x %in% param$bgnodes) next
       parents <- which(dag[, x] == 1)
-      loc_score <- targetCoreScore(x, parents, n, param, l)    
-      curr_score <- curr_score + loc_score  # build score
+      iparents <- parents[parents %in% param$bgnodes]
+      obsparents <- setdiff(parents, iparents)
+      x_obs <- x - param$bgn
+      obsparents_obs <- obsparents - param$bgn
+
+      if (length(iparents) == 0) {
+        curr_score <- curr_score + BiDAG:::DAGcorescore(
+          x_obs,
+          obsparents_obs,
+          param$nsmall,
+          param$bgeinitparam
+        )
+      } else {
+        local_exps <- attr(
+          mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]),
+          "index"
+        )
+
+        for (ii in seq_len(max(local_exps))) {
+          condition_ids <- which(local_exps == ii)
+
+          for (condition in condition_ids) {
+            curr_score <- curr_score + targetCoreScore(
+              j = x_obs,
+              parentnodes = obsparents_obs,
+              n = param$nsmall,
+              param = param,
+              l = l,
+              condition = condition
+            )
+          }
+        }
+      }
     }
+
     dag_scores[l] <- curr_score
   }
-  logMeanExpLogs (dag_scores)
+  logMeanExpLogs(dag_scores)
 }
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Run MCMC
@@ -535,7 +574,31 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   dp.fit$traceadd$incidence <- dp.fit$traceadd$incidence[-(1:toburn)]
   dp.fit$trace <- dp.fit$trace[-(1:toburn)]
   ndags <- length(dp.fit$trace)
-  
+
+  # compute weights for all sampled unique DAGs
+  dag_key <- function(dag) {
+    paste(c(dim(dag), as.integer( 1 * as(dag, "matrix"))), collapse = "_")
+  }
+  dags <- dp.fit$traceadd$incidence
+  keys <- vapply(dags, dag_key, character(1))
+  unique_keys <- unique(keys)
+  first_idx <- match(unique_keys, keys)
+  unique_scores <- numeric(length(unique_keys))
+  names(unique_scores) <- unique_keys
+
+  for (u in seq_along(unique_keys)) {
+    dag <- dags[[first_idx[u]]]
+
+    unique_scores[u] <- DPscoreDAG(
+      param = Score,
+      dag = dag
+    )
+  }
+
+  target_scores <- unname(unique_scores[keys])
+  weights <- target_scores - dp.fit$trace
+
+  dp.fit$weights <- weights - logSumExp(weights)
   end <- Sys.time()
   time2 <- end - inter
   time <- end - start + searchspace$time
@@ -820,20 +883,50 @@ simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
 ## Non interventional effects
 ## Bestie equivalent functions
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-DP_sample_node_beta <- function(j, parentNodes, dataParams, sample = TRUE) {
-  # chose the DP score parameters corresponding to the child node j
-  child_name <- colnames(dataParams$data)[j]
+DP_sample_node_beta_i <- function(j, parentNodes, dataParams, sample = TRUE) {
+  ## skip intervention/background nodes
+  if (j %in% dataParams$bgnodes) {
+    return(numeric(0))
+  }
+  bgn <- dataParams$bgn
+  ## augmented -> observed indices
+  j_obs <- j - bgn
+  iparents <- parentNodes[parentNodes %in% dataParams$bgnodes]
+  obsParents <- setdiff(parentNodes, iparents)
+  obsParents_obs <- obsParents - bgn
+
+  if (length(obsParents_obs) == 0) {
+    return(numeric(0))
+  }
+  ## For causal effects, use natural/observational state.
+  ## If no intervention parent, use global all-zero condition.
+  if (length(iparents) == 0) {
+    exp_conds <- dataParams$exps
+    condition <- which(rowSums(exp_conds) == 0)[1]
+  } else {
+    exp_conds <- mgcv::uniquecombs(
+      dataParams$exps[, iparents, drop = FALSE]
+    )
+    local_exps <- attr(exp_conds, "index")
+    ii0 <- which(rowSums(exp_conds) == 0)[1]
+
+    global_conditions <- which(local_exps == ii0)
+    condition <- which(rowSums(dataParams$exps) == 0)[1]
+  }
+  scoreparam_blocks <- dataParams$i_dp_scoreparam_list[[condition]]
+  child_name <- colnames(dataParams$obsdata)[j_obs]
   d_idx <- which(vapply(
-    dataParams$dp_scoreparam_list,
-    function(x) x$meta$child == child_name,
+    scoreparam_blocks,
+    function(x) identical(x$meta$child, child_name),
     logical(1)
   ))
 
-  # Chose one DP draw for the scoring:
-  # If several DP fits exist for the same child, choose one
+  if (length(d_idx) == 0) {
+    stop(paste("No DP score parameters found for child:", child_name))
+  }
   d <- sample(d_idx, 1)
-  scoreparam_list <- dataParams$dp_scoreparam_list[[d]]$scores
-  # Choose one posterior DP membership draw
+  scoreparam_list <- scoreparam_blocks[[d]]$scores
+
   if (sample) {
     l <- sample(seq_along(scoreparam_list), 1)
   } else {
@@ -841,22 +934,19 @@ DP_sample_node_beta <- function(j, parentNodes, dataParams, sample = TRUE) {
   }
   scoreparam <- scoreparam_list[[l]]
 
-  # find clusters and cluster weights
   K <- scoreparam$K
   beta_by_cluster <- vector("list", K)
 
-  # same as Bestie:::DAGparametersCore but for each cluster
   for (k in seq_len(K)) {
     TNk <- scoreparam$TN[[k]]
-    df <- scoreparam$awpN[k] - dataParams$n + length(parentNodes) + 1
-    R11 <- TNk[parentNodes, parentNodes, drop = FALSE]
-    R12 <- TNk[parentNodes, j, drop = FALSE]
+    df <- scoreparam$awpN[k] - dataParams$nsmall + length(obsParents_obs) + 1
+    R11 <- TNk[obsParents_obs, obsParents_obs, drop = FALSE]
+    R12 <- TNk[obsParents_obs, j_obs, drop = FALSE]
     R11inv <- solve(R11)
     mb <- R11inv %*% R12
-    divisor <- TNk[j, j] - t(R12) %*% mb
+    divisor <- TNk[j_obs, j_obs] - t(R12) %*% mb
     sigma <- as.numeric(divisor / df) * R11inv
     if (sample) {
-      # same as Bestie:::SampleParameters
       beta_by_cluster[[k]] <- as.vector(
         mvtnorm::rmvt(
           1,
@@ -887,19 +977,25 @@ DP_sample_node_beta <- function(j, parentNodes, dataParams, sample = TRUE) {
 
 DP_DAGintervention <- function(incidences, dataParams, sample = TRUE) {
   one_dag <- function(incidence) {
-    p <- ncol(incidence)
+    p <- dataParams$nsmall
+    bgn <- dataParams$bgn
     coeffMatrix <- matrix(0, p, p)
-    colnames(coeffMatrix) <- rownames(coeffMatrix) <- colnames(incidence)
-    for (j in seq_len(p)) {
-      parentNodes <- which(incidence[, j] == 1)
-      if (length(parentNodes) == 0) next
-      beta <- DP_sample_node_beta(
-        j = j,
-        parentNodes = parentNodes,
+    colnames(coeffMatrix) <- rownames(coeffMatrix) <- colnames(dataParams$obsdata)
+
+    for (j_aug in dataParams$mainnodes) {
+      j_obs <- j_aug - bgn
+      parentNodes_aug <- which(incidence[, j_aug] == 1)
+      obsParents_aug <- setdiff(parentNodes_aug, dataParams$bgnodes)
+
+      if (length(obsParents_aug) == 0) next
+      beta <- DP_sample_node_beta_i(
+        j = j_aug,
+        parentNodes = parentNodes_aug,
         dataParams = dataParams,
         sample = sample
       )
-      coeffMatrix[parentNodes, j] <- beta
+      obsParents_obs <- obsParents_aug - bgn
+      coeffMatrix[obsParents_obs, j_obs] <- beta
     }
     solve(diag(p) - coeffMatrix)
   }
