@@ -15,7 +15,6 @@ library(mvtnorm)
 library(BayesFactor)
 library(matrixStats)
 library(BNPmix)
-library(transport)
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -303,8 +302,8 @@ results_small <- results %>%
 
 method_cols <- c(
   "BGe" = "#F8766D",
-  "DP" = "#00BA38",
-  "DP dual" = "#619CFF"
+  "DP" = "#619CFF",
+  "DP dual" = "#00BA38"
 )
 
 ggplot(results_small, aes(x = method, y = value, color = method)) +
@@ -334,3 +333,55 @@ ggplot(results_small, aes(x = method, y = value, color = method)) +
   )
 
 
+# plot the differences in wasserstein distance
+delta_wasserstein <- results_small %>%
+  select(N, n, d, rep, bge.par, method, value) %>%
+  pivot_wider(
+    names_from = method,
+    values_from = value
+  ) %>%
+  transmute(
+    N, n, d, rep, bge.par,
+    
+    `DP` =
+      `DP` - `BGe`,
+    
+    `DP dual` =
+      `DP dual` - `BGe`
+  ) %>%
+  pivot_longer(
+    cols = c(`DP`, `DP dual`),
+    names_to = "comparison",
+    values_to = "delta_W"
+  )
+
+delta_wasserstein <- delta_wasserstein %>%
+  mutate(
+    comparison = factor(comparison, levels = c("DP dual", "DP"))
+  )
+
+ggplot(delta_wasserstein,
+       aes(x = comparison, y = delta_W, colour = comparison)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_boxplot(aes(group = comparison), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
+  labs(
+    x = NULL,
+    y = expression(Delta * " Wasserstein distance")
+  ) +
+  facet_grid(
+    N ~ d,
+    labeller = labeller(
+      N = function(x) paste("N =", x),
+      d = function(x) paste("d =", x)
+    )
+  ) +
+  scale_colour_manual(values = method_cols) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
