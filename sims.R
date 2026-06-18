@@ -1,6 +1,7 @@
 packages <- c(
   "BiDAG",
   "dplyr",
+  "tidyr",
   "ggplot2",
   "foreach",
   "doFuture",
@@ -228,9 +229,9 @@ results_small <- results %>%
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD))
 # add text medians
-medians <- results_small %>%
-  group_by(method, N, n, d) %>%
-  summarise(median_ESHD = median(ESHD), .groups = "drop")
+# medians <- results_small %>%
+#   group_by(method, N, n, d) %>%
+#   summarise(median_ESHD = median(ESHD), .groups = "drop")
 
 ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
@@ -264,5 +265,62 @@ ggplot(results_small, aes(x = method, y = ESHD, color = method)) +
 
 
 
+# plot differences
+delta_eshd <- results_small %>%
+  select(N, n, d, rep, bge.par, graph, method, ESHD) %>%
+  pivot_wider(
+    names_from = method,
+    values_from = ESHD
+  ) %>%
+  transmute(
+    N, n, d, rep, bge.par, graph,
+    
+    `DP, partition` =
+      `DP, partition` - `BGe, partition`,
+    
+    `DP dual, partition` =
+      `DP dual, partition` - `BGe, partition`,
+    
+    `DP, order` =
+      `DP, order` - `BGe, order`,
+    
+    `DP dual, order` =
+      `DP dual, order` - `BGe, order`
+  ) %>%
+  pivot_longer(
+    cols = -c(N, n, d, rep, bge.par, graph),
+    names_to = "comparison",
+    values_to = "delta_ESHD"
+  ) 
 
 
+ggplot(delta_eshd, aes(x = comparison, y = delta_ESHD, color = comparison)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_boxplot(aes(group = comparison), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
+  scale_fill_manual(values = cols) +
+  labs(
+    x = NULL,
+    y = expression(Delta * " E-SHD")
+  ) +
+  facet_grid(
+    N ~ d,
+    labeller = labeller(
+      N = function(x) paste("N =", x),
+      d = function(x) paste("d =", x)
+    )
+  ) +
+  scale_colour_manual(values = c(
+    "DP, order"          = "#619CFF",
+    "DP dual, order"     = "#00BA38",
+    "DP, partition"      = "#F564E3",
+    "DP dual, partition" = "#00BFC4"
+  )) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
