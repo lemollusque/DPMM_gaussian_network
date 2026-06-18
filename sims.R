@@ -289,14 +289,14 @@ delta_eshd <- results_small %>%
   ) %>%
   pivot_longer(
     cols = -c(N, n, d, rep, bge.par, graph),
-    names_to = "comparison",
+    names_to = "method",
     values_to = "delta_ESHD"
   ) 
 
 
-ggplot(delta_eshd, aes(x = comparison, y = delta_ESHD, color = comparison)) +
+ggplot(delta_eshd, aes(x = method, y = delta_ESHD, color = method)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  geom_boxplot(aes(group = comparison), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
+  geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
   geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
   scale_fill_manual(values = cols) +
   labs(
