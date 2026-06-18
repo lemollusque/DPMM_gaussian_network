@@ -15,6 +15,7 @@ library(mvtnorm)
 library(BayesFactor)
 library(matrixStats)
 library(BNPmix)
+library(transport)
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot

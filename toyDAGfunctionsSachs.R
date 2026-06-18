@@ -330,18 +330,6 @@ plotEffects <- function(effects4plot,
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Plot compare distributions of effects
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-wasserstein1d_empirical <- function(x, y) {
-  x <- sort(as.numeric(x))
-  y <- sort(as.numeric(y))
-  
-  m <- max(length(x), length(y))
-  probs <- seq(0, 1, length.out = m)
-  
-  mean(abs(
-    quantile(x, probs = probs, type = 8, names = FALSE) -
-      quantile(y, probs = probs, type = 8, names = FALSE)
-  ))
-}
 wasserstein_effect_avg <- function(effects4plot,
                                    trueEffects,
                                    effectGraph,
@@ -357,7 +345,7 @@ wasserstein_effect_avg <- function(effects4plot,
 
   for (ii in sortlabs) {
     for (jj in sortlabs) {
-      Wdist[ii, jj] <- wasserstein1d_empirical(
+      Wdist[ii, jj] <- wasserstein1d(
         truearray[ii, jj, ],
         effsarray[ii, jj, ]
       )
@@ -400,7 +388,7 @@ plotCompareEffects <- function(effects4plot,
     
   for (ii in sortlabs) {
     for (jj in sortlabs) {
-      Wdist[ii, jj] <- wasserstein1d_empirical(
+      Wdist[ii, jj] <- wasserstein1d(
         truearray[ii, jj, ],
         effsarray[ii, jj, ]
       )

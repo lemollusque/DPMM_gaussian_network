@@ -1,20 +1,25 @@
-library(BiDAG)
-library(Bestie)
-library(matrixStats)
-library(dirichletprocess)
-library(dplyr)
-library(ggplot2)
-library(foreach)
-library(doFuture)
-library(future)
-library(parallelly)
-library(mclust)
-library(progressr)
-library(doRNG)
-library(mvtnorm)
-library(BayesFactor)
-library(matrixStats)
-library(BNPmix)
+packages <- c(
+  "BiDAG",
+  "dplyr",
+  "ggplot2",
+  "foreach",
+  "doFuture",
+  "future",
+  "progressr",
+  "doRNG",
+  "mvtnorm",
+  "BayesFactor",
+  "matrixStats",
+  "BNPmix",
+  "transport"
+)
+
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
 
 source("toyDAGfunctionsSachs.R")
 
