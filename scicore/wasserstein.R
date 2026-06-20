@@ -36,7 +36,7 @@ nDAGs <- 500
 
 # dirichlet params
 dp_model = "LS"
-dp_strength = 0.1
+dp_strength = 1
 dp_fits <- 1
 dp_iter <- 5000
 burnin <- 3000
