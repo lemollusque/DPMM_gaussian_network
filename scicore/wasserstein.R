@@ -10,8 +10,7 @@ packages <- c(
   "mvtnorm",
   "BayesFactor",
   "matrixStats",
-  "BNPmix",
-  "transport"
+  "BNPmix"
 )
 
 for (pkg in packages) {

@@ -330,6 +330,57 @@ plotEffects <- function(effects4plot,
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Plot compare distributions of effects
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+wasserstein1d <- function (a, b, p = 1, wa = NULL, wb = NULL) 
+{
+    m <- length(a)
+    n <- length(b)
+    stopifnot(m > 0 && n > 0)
+    if (m == n && is.null(wa) && is.null(wb)) {
+        return(mean(abs(sort(b) - sort(a))^p)^(1/p))
+    }
+    stopifnot(is.null(wa) || length(wa) == m)
+    stopifnot(is.null(wb) || length(wb) == n)
+    if (is.null(wa)) {
+        wa <- rep(1, m)
+    }
+    else {
+        wha <- wa > 0
+        wa <- wa[wha]
+        a <- a[wha]
+        m <- length(a)
+    }
+    if (is.null(wb)) {
+        wb <- rep(1, n)
+    }
+    else {
+        whb <- wb > 0
+        wb <- wb[whb]
+        b <- b[whb]
+        n <- length(b)
+    }
+    orda <- order(a)
+    ordb <- order(b)
+    a <- a[orda]
+    b <- b[ordb]
+    wa <- wa[orda]
+    wb <- wb[ordb]
+    ua <- (wa/sum(wa))[-m]
+    ub <- (wb/sum(wb))[-n]
+    cua <- c(cumsum(ua))
+    cub <- c(cumsum(ub))
+    arep <- hist(cub, breaks = c(-Inf, cua, Inf), plot = FALSE)$counts + 
+        1
+    brep <- hist(cua, breaks = c(-Inf, cub, Inf), plot = FALSE)$counts + 
+        1
+    aa <- rep(a, times = arep)
+    bb <- rep(b, times = brep)
+    uu <- sort(c(cua, cub))
+    uu0 <- c(0, uu)
+    uu1 <- c(uu, 1)
+    areap <- sum((uu1 - uu0) * abs(bb - aa)^p)^(1/p)
+    return(areap)
+}
+
 wasserstein_effect_avg <- function(effects4plot,
                                    trueEffects,
                                    effectGraph,

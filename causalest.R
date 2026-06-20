@@ -14,7 +14,6 @@ library(doRNG)
 library(mvtnorm)
 library(BayesFactor)
 library(matrixStats)
-library(transport)
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
