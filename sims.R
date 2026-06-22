@@ -298,7 +298,6 @@ ggplot(delta_eshd, aes(x = method, y = delta_ESHD, color = method)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   geom_boxplot(aes(group = method), width = 0.6, outlier.shape = NA, linewidth = 0.6) +
   geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
-  scale_fill_manual(values = cols) +
   labs(
     x = NULL,
     y = expression(Delta * " E-SHD")
