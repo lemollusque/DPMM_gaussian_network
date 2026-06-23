@@ -118,3 +118,166 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
 dev.off()
 
 
+
+
+# jnk -> p38 analysis
+jnk <- which(colnames(sachs.data) == "Jnk")
+p38 <- which(colnames(sachs.data) == "P38")
+
+par(mfrow = c(2, 3), mar = c(4, 4, 3, 1))
+for (cl in 1:6) {
+  
+  dname <- paste0("cluster", cl)
+  
+  nSeeds <- length(batch)
+  alleffs <- vector("list", nDAGs * nSeeds)
+  
+  for (nlevel in 1:nSeeds) {
+    seednumber <- batch[nlevel]
+    
+    load(file = paste0(
+      "./Sachs/saveout_subpopulation/effects",
+      nNodes, "seed", seednumber, dname, ".RData"
+    ))
+    
+    alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
+  }
+  
+  eff <- sapply(alleffs, function(x) x[jnk, p38])
+  eff <- eff[eff != 0]
+  
+  hist(
+    eff,
+    breaks = 50,
+    main = dname,
+    xlab = "Jnk → P38 effect",
+    col = "grey80",
+    border = "white"
+  )
+}
+
+cluster = hard_clusters
+
+eff_df <- data.frame()
+
+for (cl in 1:6) {
+  
+  dname <- paste0("cluster", cl)
+  alleffs <- vector("list", nDAGs * length(batch))
+  
+  for (nlevel in seq_along(batch)) {
+    seednumber <- batch[nlevel]
+    
+    load(file = paste0(
+      "./Sachs/saveout_subpopulation/effects",
+      nNodes, "seed", seednumber, dname, ".RData"
+    ))
+    
+    alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
+  }
+  
+  eff <- sapply(alleffs, function(x) x[jnk, p38])
+  eff <- eff[eff != 0]
+  
+  eff_df <- rbind(
+    eff_df,
+    data.frame(
+      effect = eff,
+      cluster = paste0("cluster ", cl)
+    )
+  )
+}
+
+# cluster contribution by number of effect samples
+cluster_weights <- eff_df %>%
+  group_by(cluster) %>%
+  summarise(n = n()) %>%
+  mutate(weight = n / sum(n))
+
+eff_df <- eff_df %>%
+  left_join(cluster_weights, by = "cluster")
+
+ggplot(eff_df, aes(x = effect, colour = cluster, fill = cluster)) +
+  geom_density(
+    aes(weight = weight / n),
+    alpha = 0.25,
+    linewidth = 0.8
+  ) +
+  geom_density(
+    data = eff_df,
+    aes(x = effect),
+    inherit.aes = FALSE,
+    colour = "black",
+    linewidth = 1
+  ) +
+  coord_cartesian(ylim = c(0, 7)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme_bw() +
+  labs(
+    x = "Jnk → P38",
+    y = "Density"
+  ) +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(vjust = 0.5, hjust = 1),
+    panel.grid.major.x = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  ) +
+  guides(
+    colour = "none",
+    fill = guide_legend(title = NULL)
+  )
+
+
+# compare densities
+# DP-BGe
+alleff_dp <- sapply(data4plot$alleffs, function(x) x[jnk, p38])
+alleff_dp <- alleff_dp[alleff_dp != 0]
+
+# BGe
+alleff_bge <- sapply(data4plot_bge$alleffs, function(x) x[jnk, p38])
+alleff_bge <- alleff_bge[alleff_bge != 0]
+
+method_cols <- c(
+  "BGe" = "#F8766D",
+  "DP" = "#619CFF",
+  "Cluster mixture" = "black"
+)
+
+plot_df <- rbind(
+  data.frame(effect = alleff_dp, source = "DP"),
+  data.frame(effect = alleff_bge, source = "BGe"),
+  data.frame(effect = eff_df$effect, source = "Cluster mixture")
+)
+plot_df$source <- factor(
+  plot_df$source,
+  levels = c("BGe", "DP", "Cluster mixture")
+)
+
+ggplot(plot_df,
+       aes(x = effect,
+           colour = source,
+           linetype = source)) +
+  geom_density(linewidth = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  scale_colour_manual(values = method_cols) +
+  scale_linetype_manual(
+    values = c(
+      "BGe" = "solid",
+      "DP" = "solid",
+      "Cluster mixture" = "solid"
+    )
+  ) +
+  coord_cartesian(ylim = c(0, 7)) +
+  theme_bw() +
+  labs(
+    x = "Jnk → P38",
+    y = "Density",
+    colour = NULL,
+    linetype = NULL
+  ) +
+  theme(
+    legend.position = "bottom",
+    panel.grid.major.x = element_blank()
+  )
