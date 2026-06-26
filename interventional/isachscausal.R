@@ -1,10 +1,10 @@
-
 # preprocessing etc of the Sachs data
 source("./isachssetup.R")
 
 # load libraries
 library(BiDAG)
 library(Bestie)
+
 library(matrixStats)
 library(dplyr)
 library(ggplot2)
@@ -27,7 +27,6 @@ insertSource("ifnsdp.R", package = "BiDAG")
 # load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
 source("itoyDAGfunctionsSachs.R")
 source("intfns.R")
-source("dualPC.R")
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -35,68 +34,47 @@ library(DiagrammeRsvg) ## for exporting svg for plotting to file
 library(rsvg) ## for converting svg to png
 
 inputData <- scale(data)
-
-bge.par = 0.01
-# dirichlet params
-dp_usrpar <- list(
-  pctesttype = "bge",
-  am = bge.par,
-  Imat = Imat,
-  dp_prior = list(strength = 0.0002, discount = 0),
-  dp_mcmc = list(niter = 500, nburn = 300, model="LS"),
-  dp_n_sample = 100,
-  dp_fits = 1,
-  dp_fitspace = "full",
-  Imat = Imat,
-  bgremove = TRUE
-)
-
-
 nDAGs <- 50
-nSeeds <- 50
+nSeeds <- 10
 batch <- 100 + 1:nSeeds
 labels4plot <- colnames(inputData) 
 nNodes <- length(labels4plot)
+
+dp_usrpar <- list(
+  pctesttype = "bge",
+  am = 0.01,
+  Imat = Imat,
+  dp_prior = list(strength = 0.0002, discount = 0),
+  dp_mcmc = list(niter = 500, nburn = 300, model="LS"),
+  dp_n_sample = 5,
+  dp_fits = 1,
+  dp_fitspace = "full",
+  bgremove = TRUE
+)
 
 plan(multisession, workers = min(length(batch), availableCores()-1))
 registerDoFuture()
 
 foreach(
   seednumber = batch,
-  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
+  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm", "BNPmix")
 ) %dorng% {
   
   source("ifnsdp.R")
   insertSource("ifnsdp.R", package = "BiDAG")
-  source("itoyDAGfunctionsSachs.R")
   source("intfns.R")
-  source("dualPC.R")
   
   timing <- proc.time()
   print(paste("Seed is", seednumber))
-  
-  DP.searchspace <- set.searchspace(
-    inputData,
-    "DP",
-    usrpar = dp_usrpar
-  )
-  
-  sampleDAGs(
-    inData = inputData,
-    searchspace = DP.searchspace,
-    weighted = TRUE,
-    nDigraphs = nDAGs,
-    seed = seednumber
-  )
-  
-  computeEffects(
-    n = nNodes,
-    seed = seednumber,
-    DP = TRUE
-  )
-  
+  sampleDAGs(inData=inputData, scoretype = "usr",
+             usrpar = dp_usrpar,
+             nDigraphs=nDAGs, seed=seednumber,
+             weighted=FALSE)
+  computeEffects(n=nNodes, seed=seednumber, DP=TRUE)
+  print(proc.time() - timing)
   TRUE
 }
+
 data4plot <- loadsamples(seeds=batch, nn=nNodes)
 
 graph2plot <- dagviz(data4plot$alldigraphs, rm_nodes = 1:6, style_mat = matrix(1, 11, 11), title_text = "")

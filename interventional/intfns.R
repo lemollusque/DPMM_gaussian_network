@@ -45,6 +45,9 @@ BGeaugment <- function(sigma, mu, N, n, am, aw, logedgepmat) {
   localparam$DBN <- FALSE
   localparam$MDAG <- FALSE
   localparam$logedgepmat <- logedgepmat
+  localparam$sigma <- sigma
+  localparam$mu <- mu
+  localparam$N <- N
   return(localparam)
 }
 

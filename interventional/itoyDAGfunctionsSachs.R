@@ -1,11 +1,7 @@
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Sample DAGs with BiDAG
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-sampleDAGs <- function(inData, searchspace, weighted = FALSE, nDigraphs = 50, seed=101, dname="", ...){
-  scoreObject <- searchspace$score
-  scoreObject$data = inData
-  scoreObject$nodeslabels = colnames(inData)
-
+sampleDAGs <- function(inData, nDigraphs = 50, weighted = FALSE, seed=101, dname="", ...){
   n <- ncol(inData) # number of variables
   stepsave <- 10*round(n*n*log(n)) ## thinning interval, 
   ## to improve the properties of the chain (sample independence)
@@ -14,19 +10,23 @@ sampleDAGs <- function(inData, searchspace, weighted = FALSE, nDigraphs = 50, se
   if(!dir.exists("./saveout")) {dir.create("./saveout")} ## create output folder if it doesn't exist
   if(!file.exists(paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))){
     # initialise the score object needed for later functions
-
+    scoreObject <- scoreparameters(data=inData, ..., 
+                                   nodeslabels = colnames(inData))
+    #return(scoreObject)
     set.seed(seed) 
     ## set the seed for the generation of random numbers (for reproducibility)
     
     # find the search space with iterative search
-    endspace <- searchspace$endspace
+    itFit <- iterativeMCMC(scoreObject,
+                           scoreout = TRUE, compress = FALSE) ## find iterative search space
+    searchSpace <- itFit$endspace
     
     # sample a starting DAG with order MCMC
     # the default length of the chain is 6*n^2/log(n)
     # orderSample$score is the score for the highest scoring DAG found
     orderSample <- orderMCMC(scoreObject, 
                              MAP = FALSE, 
-                             startspace = endspace, 
+                             startspace = searchSpace, 
                              chainout = TRUE,
                              compress = FALSE)
     startDAG <- last(orderSample$traceadd$incidence) # extract selected (last) DAG
@@ -34,7 +34,7 @@ sampleDAGs <- function(inData, searchspace, weighted = FALSE, nDigraphs = 50, se
     
     # sample an ensemble of nDAGs DAGs from the posterior by using partition MCMC
     partitionSample <- partitionMCMC(scoreObject, 
-                                     startspace = endspace, 
+                                     startspace = searchSpace, 
                                      startDAG = startDAG, 
                                      iterations = iterations, 
                                      stepsave = stepsave,
@@ -76,12 +76,13 @@ sampleDAGs <- function(inData, searchspace, weighted = FALSE, nDigraphs = 50, se
       sampledDAGs = sampledDAGs[ind]
       DAGscores <- target_scores[ind]
     }
-    
     ## save the the collection of sampled DAGs and their scores to an .RData file
     save(sampledDAGs, DAGscores, scoreObject,
          file=paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
   }
 }  
+
+
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Compute intervention effects with Bestie
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -91,7 +92,7 @@ computeEffects <- function(n, seed=101, dname="", DP=FALSE){
   if(file.exists(paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))){
     # load the collection of sampled DAGs
     load(file = paste0("./saveout/dagdraw", n, "seed", seed, dname, ".RData"))
-
+  
     # sample parameters and derive a matrix of intervention effects for each DAG, 
     # saving them all in a list;
     # First check if effects have already been estimated and saved to file
@@ -112,6 +113,8 @@ computeEffects <- function(n, seed=101, dname="", DP=FALSE){
     }
   } else(warning("Looking for causal effects without a DAG? Try runif()!"))
 }
+
+
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Load collection of sampled DAGs and effects
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -123,13 +126,16 @@ loadsamples <- function(seeds, nn, dname = "") {
     seednumber <- seeds[nlevel]
     ## Retrieve sampled DAGs - DAG chain
     load(file = paste0("./saveout/dagdraw", nn, "seed", seednumber, dname, ".RData"))
-    alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs # remove the starting point
+    alldigraphs[1:nDAGs + (nlevel - 1) * nDAGs] <- sampledDAGs[-1] # remove the starting point
     ## Retrieve estimated effects
     load(file = paste0("./saveout/effects", nn, "seed", seednumber, dname, ".RData"))
-    alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats # remove the starting point
+    alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats[-1] # remove the starting point
   }
   list(alldigraphs=alldigraphs, alleffs=alleffs)
 }
+
+
+
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Internal function to set-up plot style
 ## Define some default plotting settings for the effects
@@ -144,6 +150,74 @@ setPlot <- function(dt = NULL, ...){
        ...)
 }
 
+
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+## Plot a matrix of posterior distributions of effects
+## ---------------------------------------------------------------------------------------------------------------------------------------------------------
+plotEffects <- function(effects4plot, 
+                        sortlabs, ## an order vector of indiced
+                        ## would it be better if names are saved in the list of effect matrices?
+                        ## then use match if given a vector of order labels to find the indices in the Effect matrices
+                        sigcutoff = 0.025,
+                        xmargs = rep(0.1, 2),
+                        label_size = 1,
+                        title_text = "Distributions of Downstream Causal Effects\n"){
+  orderingy = c(0, sortlabs) 
+  ## Provide labels in sortlabs in a customised order if desired
+  ### Pick an ordering which matches to some extent the node hierarchy on the DAG
+  
+  nn <- length(sortlabs)
+  effsarray <- round(simplify2array(effects4plot), 8)
+  aveffs <- apply(effsarray, c(1,2), mean)
+  # estimate of the posterior mean of the intervention effects
+  roundeffs <- round(aveffs, 3)
+  
+  efflabs <- colnames(roundeffs)
+  
+  minx <- min(apply(effsarray, c(1,2), min))
+  maxx <- max(apply(effsarray, c(1,2), max))
+  
+  par(mfrow = c(nn+1, nn+1))
+  par(oma = rep(0.2,4) + c(0,0,5*(title_text!=""),0))
+  par(mar = rep(0,4))
+  
+  for(i in 0:nn+1){
+    ii <- orderingy[i+1]
+    for(j in 0:nn){
+      jj <- orderingy[j+1]
+      if(i==(nn+1) || j==0){
+        setPlot(xlim=c(-1.1,1.1), ylim=c(0,1), col="darkorchid4")
+        if(j==0 && i<(nn+1)){
+          text(0,0.5, efflabs[ii], cex=label_size)
+          }
+        if(i==(nn+1) && j>0){
+          text(0,0.5, efflabs[jj], srt=90, cex=label_size)
+          }
+        } else{
+          if(!(roundeffs[ii,jj]==0 || roundeffs[ii,jj]==1) ){
+            d <- density(effsarray[ii,jj,])
+            setPlot(d, xlim=c(-xmargs[1] + minx, xmargs[2] + maxx), col="dodgerblue")
+            testquantiles <- quantile(effsarray[ii,jj,], c(sigcutoff, 1-sigcutoff))
+            if(testquantiles[1]>0 || testquantiles[2]<0){
+              u <- par("usr") # The coordinates of the plot area
+              rect(u[1], u[3], u[2], u[4], col="#ffa07a44", border=NA)
+              }
+            polygon(d, col="dodgerblue", border="dodgerblue")
+            abline(v=0, col="firebrick3", lty=2)
+            u <- par("usr") # The coordinates of the plot area
+            text( (u[1]+u[2])/2,(u[3]+u[4])/2, 
+                  format(round(roundeffs[ii,jj], 2), nsmall = 2) )
+            } else {
+              setPlot(xlim=c(-xmargs[1] + minx, xmargs[2] + maxx), ylim=c(0,1), col="darkorchid4")
+              text(0, 0.5, roundeffs[ii,jj])
+            }
+        }
+    }
+  }
+  if (title_text != "") {
+    mtext(title_text, outer = TRUE, cex = 0.9)
+  }
+}
 
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Plot a summary DAG from a collection of samples
@@ -220,225 +294,4 @@ dagviz <- function(dags4plot, # roundprobs,
     }
   }
   grViz(paste0(graphcommand,"labelloc=\"t\";\n label= \"", title_text, "\";}"))
-}
-
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-## Plot a matrix of posterior distributions of effects
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-plotEffects <- function(effects4plot, 
-                        sortlabs, ## an order vector of indiced
-                        ## would it be better if names are saved in the list of effect matrices?
-                        ## then use match if given a vector of order labels to find the indices in the Effect matrices
-                        sigcutoff = 0.025,
-                        xmargs = rep(0.1, 2),
-                        label_size = 1,
-                        title_text = "Distributions of Downstream Causal Effects\n"){
-  orderingy = c(0, sortlabs) 
-  ## Provide labels in sortlabs in a customised order if desired
-  ### Pick an ordering which matches to some extent the node hierarchy on the DAG
-  
-  nn <- length(sortlabs)
-  effsarray <- round(simplify2array(effects4plot), 8)
-  aveffs <- apply(effsarray, c(1,2), mean)
-  # estimate of the posterior mean of the intervention effects
-  roundeffs <- round(aveffs, 3)
-  
-  efflabs <- colnames(roundeffs)
-  
-  minx <- min(apply(effsarray, c(1,2), min))
-  maxx <- max(apply(effsarray, c(1,2), max))
-  
-  par(mfrow = c(nn+1, nn+1))
-  par(oma = rep(0.2,4) + c(0,0,5*(title_text!=""),0))
-  par(mar = rep(0,4))
-  
-  for(i in 0:nn+1){
-    ii <- orderingy[i+1]
-    for(j in 0:nn){
-      jj <- orderingy[j+1]
-      if(i==(nn+1) || j==0){
-        setPlot(xlim=c(-1.1,1.1), ylim=c(0,1), col="darkorchid4")
-        if(j==0 && i<(nn+1)){
-          text(0,0.5, efflabs[ii], cex=label_size)
-          }
-        if(i==(nn+1) && j>0){
-          text(0,0.5, efflabs[jj], srt=90, cex=label_size)
-          }
-        } else{
-          if(!(roundeffs[ii,jj]==0 || roundeffs[ii,jj]==1) ){
-            d <- density(effsarray[ii,jj,])
-            setPlot(d, xlim=c(-2,2), col="dodgerblue")
-            testquantiles <- quantile(effsarray[ii,jj,], c(sigcutoff, 1-sigcutoff))
-            if(testquantiles[1]>0 || testquantiles[2]<0){
-              u <- par("usr") # The coordinates of the plot area
-              rect(u[1], u[3], u[2], u[4], col="#ffa07a44", border=NA)
-              }
-            polygon(d, col="dodgerblue", border="dodgerblue")
-            abline(v=0, col="firebrick3", lty=2)
-            u <- par("usr") # The coordinates of the plot area
-            text( (u[1]+u[2])/2,(u[3]+u[4])/2, 
-                  format(round(roundeffs[ii,jj], 2), nsmall = 2) )
-            } else {
-              setPlot(xlim=c(-2,2), ylim=c(0,1), col="darkorchid4")
-              text(0, 0.5, roundeffs[ii,jj])
-            }
-        }
-    }
-  }
-  if (title_text != "") {
-    mtext(title_text, outer = TRUE, cex = 0.9)
-  }
-}
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-## Plot compare distributions of effects
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-wasserstein1d_empirical <- function(x, y) {
-  x <- sort(as.numeric(x))
-  y <- sort(as.numeric(y))
-  
-  m <- max(length(x), length(y))
-  probs <- seq(0, 1, length.out = m)
-  
-  mean(abs(
-    quantile(x, probs = probs, type = 8, names = FALSE) -
-      quantile(y, probs = probs, type = 8, names = FALSE)
-  ))
-}
-wasserstein_effect_avg <- function(effects4plot,
-                                   trueEffects,
-                                   effectGraph,
-                                   sortlabs = seq_len(nrow(effectGraph))) {
-  effsarray <- round(simplify2array(effects4plot), 8)
-  truearray <- round(simplify2array(trueEffects), 8)
-
-  nn <- length(sortlabs)
-
-  Wdist <- matrix(NA_real_, nn, nn)
-  rownames(Wdist) <- rownames(effectGraph)[sortlabs]
-  colnames(Wdist) <- colnames(effectGraph)[sortlabs]
-
-  for (ii in sortlabs) {
-    for (jj in sortlabs) {
-      Wdist[ii, jj] <- wasserstein1d_empirical(
-        truearray[ii, jj, ],
-        effsarray[ii, jj, ]
-      )
-    }
-  }
-
-  keep <- effectGraph == 1
-
-  list(
-    Wdist = Wdist,
-    avgW = mean(Wdist[keep], na.rm = TRUE),
-    nEffects = sum(keep, na.rm = TRUE)
-  )
-}
-plotCompareEffects <- function(effects4plot,
-                                   trueEffects,
-                                   sortlabs,
-                                   sigcutoff = 0.025,
-                                   xmargs = rep(0.1, 2),
-                                   label_size = 1,
-                                   title_text = "Distributions of Downstream Causal Effects\n") {
-  
-  orderingy = c(0, sortlabs) 
-  ## Provide labels in sortlabs in a customised order if desired
-  ### Pick an ordering which matches to some extent the node hierarchy on the DAG
-  
-  nn <- length(sortlabs)
-  effsarray <- round(simplify2array(effects4plot), 8)
-  truearray <- round(simplify2array(trueEffects), 8)
-  aveffs <- apply(effsarray, c(1,2), mean)
-  # estimate of the posterior mean of the intervention effects
-  roundeffs <- round(aveffs, 3)
-  
-  efflabs <- colnames(roundeffs)
-  
-  minx <- min(apply(effsarray, c(1,2), min))
-  maxx <- max(apply(effsarray, c(1,2), max))
-  
-  Wdist <- matrix(NA_real_, nn, nn)
-    
-  for (ii in sortlabs) {
-    for (jj in sortlabs) {
-      Wdist[ii, jj] <- wasserstein1d_empirical(
-        truearray[ii, jj, ],
-        effsarray[ii, jj, ]
-      )
-    }
-  }
-  
-  Wscaled <- pmin(Wdist, 1)
-  heatcols <- colorRampPalette(c("white", "gold", "orange", "red"))(100)
-  
-  par(mfrow = c(nn+1, nn+1))
-  par(oma = rep(0.2,4) + c(0,0,5*(title_text!=""),0))
-  par(mar = rep(0,4))
-  
-  for(i in 0:nn+1){
-    ii <- orderingy[i+1]
-    for(j in 0:nn){
-      jj <- orderingy[j+1]
-      if (i == (nn + 1) || j == 0) {
-        setPlot(xlim = c(-1.1, 1.1), ylim = c(0, 1), col = "darkorchid4")
-        if (j == 0 && i < (nn + 1)) {
-          text(0, 0.5, efflabs[ii], cex = label_size)
-        }
-        if (i == (nn + 1) && j > 0) {
-          text(0, 0.5, efflabs[jj], srt = 90, cex = label_size)
-        }
-      } else {
-        heat_id <- max(1, ceiling(Wscaled[ii, jj] * 100))
-        heat_col <- adjustcolor(heatcols[heat_id], alpha.f = 0.45)
-
-        vals <- effsarray[ii, jj, ]
-        if (sd(vals) > 1e-8) {
-          d <- density(vals)
-          setPlot(d, xlim = c(-2, 2), col = "dodgerblue")
-          u <- par("usr")
-          rect(u[1], u[3], u[2], u[4],
-              col = heat_col,
-              border = NA)
-
-          polygon(d, col = "dodgerblue", border = "dodgerblue")
-          abline(v = 0, col = "firebrick3", lty = 2)
-          text(
-            (u[1] + u[2]) / 2,
-            (u[3] + u[4]) / 2,
-            paste0(
-              "W=",
-              format(round(Wdist[ii, jj], 2), nsmall = 2)
-            )
-          )
-
-        } else {
-          setPlot(
-            xlim = c(-2, 2),
-            ylim = c(0, 1),
-            col = "darkorchid4"
-          )
-          u <- par("usr")
-          rect(
-            u[1], u[3], u[2], u[4],
-            col = heat_col,
-            border = NA
-          )
-          text(
-            0,
-            0.5,
-            paste0(
-              "W=",
-              format(round(Wdist[ii, jj], 2), nsmall = 2)
-            )
-          )
-        }
-      }
-    }
-  }
-  if (title_text != "") {
-    mtext(title_text, outer = TRUE, cex = 0.9)
-  }
-  
-  invisible(Wdist)
 }

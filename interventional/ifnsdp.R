@@ -1,7 +1,5 @@
 #---------------------- membership prob matrix ----------------------
-dp_membership_probs <- function(fit, L = 500) {
-  Y <- as.matrix(fit$data)
-  N <- nrow(Y)
+dp_membership_probs <- function(fit, Y, N, L = 500) {
   p <- ncol(Y)
   M <- length(fit$mean)
 
@@ -59,17 +57,85 @@ dp_membership_probs <- function(fit, L = 500) {
   }
   probs_list
 }
-add_membershipp <- function(membershipp_list, membershipp, child, parents, vars = c(child, parents)) {
-  membershipp_list[[length(membershipp_list) + 1]] <- list(
-    membershipp = membershipp,
-    child = child, 
-    parents = parents, 
-    vars = vars
-  )
-  membershipp_list
-}
 #----------------------  BiDAG ----------------------------------
-usrscoreparameters <- function(initparam, 
+usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype = "bge", am = 1, edgepmat = NULL, bgremove = TRUE)){
+  n <- initparam$n
+  Imat <- usrpar$Imat
+  bgn <- ncol(Imat)
+  colnames(Imat) <- paste0("i", 1:bgn)
+  data <- initparam$data
+  weightvector <- usrpar$weightvector
+  
+  exps <- mgcv::uniquecombs(Imat) # experimental conditions
+  expsrows <- attr(exps, "index") # rows with each condition
+
+  # dirichlet params
+  prior <- usrpar$dp_prior
+  mcmc <- usrpar$dp_mcmc
+  L <- usrpar$dp_n_sample
+  dp_fits <- usrpar$dp_fits
+
+  # dp on full data
+  initparamlocal <- initparam
+  initparamlocal$data <- data
+  initparamlocal$n <- ncol(data)  
+  
+  # prepare dirichlet gamma list
+  Gamma_list <- list()
+  dp <- list()
+  for (f in seq_len(dp_fits)) {
+    output <- list(out_param = TRUE, out_type = "FULL")  
+    fit <- PYdensity(y = data, mcmc = mcmc, prior = prior, output = output)
+    Gamma_sample <- dp_membership_probs(fit, data , nrow(data), L)
+    dp[[f]] <- fit
+    Gamma_list[[f]] <- list(membershipp = Gamma_sample)
+  }
+  usrpar$membershipp_list = Gamma_list
+  dp_score <- dpscoreparameters(initparamlocal, usrpar = usrpar)
+ 
+  if (bgn > 0 && nrow(exps) > 1) {
+    initparam <- scoreparameters(scoretype = "bge", data = cbind(Imat,data), bgnodes = 1:ncol(Imat), bgepar = list(am = usrpar$am),
+                                 edgepmat = usrpar$edgepmat)
+    initparam$dp_score <- dp_score
+    initparam$type <- "usr" # make sure it knows that we have redefined the score
+    initparam$pctesttype <- "bge"
+    initparam$bgremove <- usrpar$bgremove
+    dp_scores <- vector("list", nrow(exps))
+    dp_list <- list()
+    for (ii in 1:nrow(exps)) {
+      datalocal <- data[which(expsrows == ii), , drop = FALSE]
+      initparamlocal <- initparam
+      initparamlocal$data <- datalocal
+      initparamlocal$n <- ncol(datalocal)
+      initparamlocal$N <- nrow(datalocal)
+      # prepare dirichlet gamma list
+      Gamma_list <- list()
+      for (f in seq_len(dp_fits)) {
+        output <- list(out_param = TRUE, out_type = "FULL")  
+        fit <- PYdensity(y = datalocal, mcmc = mcmc, prior = prior, output = output)
+        Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
+        dp_list[[length(dp_list) + 1]]  <- fit
+        Gamma_list[[f]] <- list(membershipp = Gamma_sample)
+      }
+      usrpar$membershipp_list = Gamma_list
+      dpscore <- dpscoreparameters(initparamlocal, usrpar = usrpar)
+      
+      dp_scores[[ii]] <- dpscore
+    }
+    initparam$dp_scores <- dp_scores
+    initparam$dp_list <- dp_list
+  } else {
+    initparam$dp_scores <- list(dp_score)
+    initparam$dp_list <- dp
+  }
+  
+  initparam$obsdata <- data
+  initparam$usrpar <- usrpar
+  initparam$exps <- exps
+  initparam$expsrows <- expsrows
+  initparam
+}
+dpscoreparameters <- function(initparam, 
                                usrpar = list(pctesttype = "bge",
                                              dp_mcmc = list(niter = 5000, nburn = 3000, model="LS"),
                                              dp_prior = list(strength = 1, discount = 0),
@@ -80,34 +146,10 @@ usrscoreparameters <- function(initparam,
                                              aw = NULL, 
                                              T0scale = NULL,
                                              edgepf = 1,
-                                             edgepmat = NULL,
-                                             Imat = NULL,
-                                             bgremove = TRUE
+                                             edgepmat = NULL
                                              )
                                        ) 
-{ 
-  obsdata <- initparam$data
-  N <- nrow(obsdata)
-  p <- ncol(obsdata)
-
-  if (is.null(usrpar$Imat)) {
-  stop("Imat must be supplied.")
-  }
-
-  Imat <- as.matrix(usrpar$Imat)
-  bgn <- ncol(Imat)
-  colnames(Imat) <- paste0("i", seq_len(bgn))
-  
-  exps <- mgcv::uniquecombs(Imat)
-  expsrows <- attr(exps, "index")
-
-  if (bgn == 0) {
-    stop("Imat must contain at least one intervention variable.")
-  }
-
-  if (nrow(exps) <= 1) {
-    stop("Imat contains only one experimental condition.")
-  }
+{
   if (is.null(usrpar$dp_prior)) {
     usrpar$dp_prior <- list(strength = 1, discount = 0, model="LS")
   }
@@ -129,10 +171,10 @@ usrscoreparameters <- function(initparam,
     usrpar$am <- 1
   }
   if (is.null(usrpar$aw)) {
-    usrpar$aw <- bgn + p+ usrpar$am + 1
+    usrpar$aw <- initparam$n + usrpar$am + 1
   }
   if (is.null(usrpar$T0scale)) {
-    usrpar$T0scale <- usrpar$am * (usrpar$aw - p - 1)/(usrpar$am + 1)
+    usrpar$T0scale <- usrpar$am * (usrpar$aw - initparam$n - 1)/(usrpar$am + 1)
   }
   if (is.null(usrpar$edgepmat)) {
     initparam$logedgepmat <- NULL
@@ -140,153 +182,26 @@ usrscoreparameters <- function(initparam,
   else {
     initparam$logedgepmat <- log(usrpar$edgepmat)
   }
-  
-
-
-  ## This is what DP-BGe uses.
-  initparam$obsdata <- obsdata
-
-  ## Augmented data is only for BiDAG graph indexing.
-  initparam$data <- cbind(Imat, obsdata)
-
-  initparam$bgn <- bgn
-  initparam$bgnodes <- seq_len(bgn)
-  initparam$static <- seq_len(bgn)
-  initparam$mainnodes <- bgn + seq_len(p)
-
-  initparam$n <- bgn + p
-  initparam$nsmall <- p
-
-  initparam$labels <- colnames(initparam$data)
-  initparam$labels.short <- initparam$labels
-  
-  initparam$exps <- exps
-  initparam$expsrows <- expsrows
-
   initparam$dp_prior <- usrpar$dp_prior
   initparam$dp_mcmc <- usrpar$dp_mcmc
   initparam$dp_fits <- usrpar$dp_fits
   initparam$dp_n_sample <- usrpar$dp_n_sample
-  initparam$dp_membershipp_list <- usrpar$membershipp_list
-
   initparam$pf <- usrpar$edgepf
   initparam$am <- usrpar$am
   initparam$aw <- usrpar$aw
   initparam$T0scale <- usrpar$T0scale
-  
-  if (bgn == 0 || nrow(exps) <= 1) {
-    stop("Need at least one intervention variable and at least two experimental conditions.")
-  }
-
+    
   # only depending on n
-  n = initparam$nsmall
+  n = initparam$n
   mu0 <- numeric(n)
   T0 <- diag(usrpar$T0scale, n, n)
-
-  # start actual ibge
-  sigmas <- vector("list", nrow(exps))
-  mus <- vector("list", nrow(exps))
-  Ns <- vector("list", nrow(exps))
-  initparam$i_dp_scoreparam_list <- vector("list", nrow(exps))
   
-  for (ii in 1:nrow(exps)) {
-    datalocal <- obsdata[which(expsrows == ii), , drop = FALSE]
-    # loop over all DPs
-    dp_membershipp_list<- usrpar$membershipp_list
-    n_dp <- length(dp_membershipp_list)
-    dp_scoreparam_list <- vector("list", n_dp)
-    mu_sum <- numeric(n)
-    cov_sum <- matrix(0, n, n)
-    for (d in 1:n_dp){
-      membershipp_list = dp_membershipp_list[[d]]$membershipp
-      L <- length(membershipp_list)
-      scoreparam_list <- vector("list", L)
-      for (l in 1:L) {
-        membershipp <- membershipp_list[[l]][which(expsrows == ii), , drop = FALSE]
-        
-        keep <- colSums(membershipp) > 0
-        membershipp <- membershipp[, keep, drop = FALSE]
-
-        K = ncol(membershipp)
-        Nk <- numeric(K)
-        means <- vector("list", K)
-        covs <- vector("list", K)
-        TN <- vector("list", K)
-        awpN <- numeric(K)
-        constscorefact <- numeric(K)
-        for (k in  1:K){
-          weightvector = membershipp[,k]
-          Nk[k] <- sum(weightvector)
-          forcov <- cov.wt(datalocal, wt = weightvector, method = "ML")
-          covs[[k]] <- forcov$cov
-          covmatk <- forcov$cov * Nk[k]
-          means[[k]] <- forcov$center
-          TN[[k]] <- T0 + covmatk + 
-            ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
-            (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
-          awpN[k] = usrpar$aw + Nk[k]
-          constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
-        }
-        
-        N <- sum(Nk)
-        clusterWeights <- Nk/N
-
-        scoreconstvec <- numeric(n)
-        for (j in (1:n)) {
-          awp <- usrpar$aw - n + j
-          scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
-            sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) - 
-            j * log(initparam$pf)
-        }
-
-        # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
-        mu_bar <- Reduce("+", Map(function(mu, w) w * mu, means, clusterWeights))
-        cov_bar <- Reduce("+", Map(function(S, w) w * S, covs, clusterWeights))
-        mu_sum <- mu_sum + mu_bar
-        cov_sum <- cov_sum + cov_bar
-
-        # save score params for DP_list[l]
-        scoreparam_list[[l]] <- list(
-          K = K,
-          TN = TN,
-          awpN = awpN,
-          scoreconstvec = scoreconstvec,
-          clusterWeights = clusterWeights
-        )
-      }
-      dp_scoreparam_list[[d]] <- list(
-        meta = list(
-          child   = dp_membershipp_list[[d]]$child,
-          parents = dp_membershipp_list[[d]]$parents,
-          vars    = dp_membershipp_list[[d]]$vars
-        ),
-        scores = scoreparam_list
-      )
-    }
-
-    # set up bge params with averaged means and covs across DPs
-    N <- nrow(datalocal)
-    means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
-    covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
-    covmat  <- covmat * N
-
-    sigmas[[ii]] <- covmat
-    mus[[ii]] <- means
-    Ns[[ii]] <- N
-    initparam$i_dp_scoreparam_list[[ii]] <- dp_scoreparam_list
-  }
-  initparam$sigmas <- sigmas
-  initparam$mus <- mus
-  initparam$Ns <- Ns
-
-  initparam$exps <- exps
-  initparam$expsrows <- expsrows
-
-  ############################################
-  ## DP-averaged BGe fallback
+  # loop over all DPs
+  dp_membershipp_list<- usrpar$membershipp_list
+  n_dp <- length(dp_membershipp_list)
+  initparam$dp_scoreparam_list <- vector("list", n_dp)
   mu_sum <- numeric(n)
   cov_sum <- matrix(0, n, n)
-
   for (d in 1:n_dp){
     membershipp_list = dp_membershipp_list[[d]]$membershipp
     L <- length(membershipp_list)
@@ -297,26 +212,60 @@ usrscoreparameters <- function(initparam,
       Nk <- numeric(K)
       means <- vector("list", K)
       covs <- vector("list", K)
+      TN <- vector("list", K)
+      awpN <- numeric(K)
+      constscorefact <- numeric(K)
       for (k in  1:K){
         weightvector = membershipp[,k]
         Nk[k] <- sum(weightvector)
-        forcov <- cov.wt(obsdata, wt = weightvector, method = "ML")
+        forcov <- cov.wt(initparam$data, wt = weightvector, method = "ML")
         covs[[k]] <- forcov$cov
+        covmatk <- forcov$cov * Nk[k]
         means[[k]] <- forcov$center
+        TN[[k]] <- T0 + covmatk + 
+          ((usrpar$am * Nk[k])/(usrpar$am + Nk[k])) * 
+          (mu0 - means[[k]]) %*% t(mu0 - means[[k]])
+        awpN[k] = usrpar$aw + Nk[k]
+        constscorefact[k] =  (1/2) * log(usrpar$am/(usrpar$am + Nk[k]))
       }
       
       N <- sum(Nk)
       clusterWeights <- Nk/N
+
+      scoreconstvec <- numeric(n)
+      for (j in (1:n)) {
+        awp <- usrpar$aw - n + j
+        scoreconstvec[j] <- -(N/2) * log(pi) + sum(constscorefact) - K*lgamma(awp/2) + 
+          sum(lgamma((awp + Nk)/2)) + K*((awp + j - 1)/2) * log(usrpar$T0scale) 
+      }
+
       # for bge params, we need the average mean and cov across clusters, weighted by cluster weights
       mu_bar <- Reduce("+", Map(function(mu, w) w * mu, means, clusterWeights))
       cov_bar <- Reduce("+", Map(function(S, w) w * S, covs, clusterWeights))
       mu_sum <- mu_sum + mu_bar
       cov_sum <- cov_sum + cov_bar
+
+      # save score params for DP_list[l]
+      scoreparam_list[[l]] <- list(
+        K = K,
+        TN = TN,
+        awpN = awpN,
+        scoreconstvec = scoreconstvec,
+        clusterWeights = clusterWeights
+      )
     }
+    initparam$dp_scoreparam_list[[d]] <- list(
+      meta = list(
+        child   = dp_membershipp_list[[d]]$child,
+        parents = dp_membershipp_list[[d]]$parents,
+        vars    = dp_membershipp_list[[d]]$vars
+      ),
+      scores = scoreparam_list
+    )
   }
 
   # set up bge params with averaged means and covs across DPs
-  N <- nrow(obsdata)
+  N <- nrow(initparam$data)
   means  <- mu_sum / (n_dp * usrpar$dp_n_sample)
   covmat  <- cov_sum / (n_dp * usrpar$dp_n_sample)
   covmat  <- covmat * N
@@ -325,25 +274,25 @@ usrscoreparameters <- function(initparam,
 
   initparam
 }
+### This function evaluates the log score of a node given its parents
 usrDAGcorescore <- function (j, parentnodes, n, param) {
+  bgn = param$bgn
   iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
-  
   if (length(iparents) == 0 || nrow(param$exps) < 2) {# use standard BGe score
-    localparam <- param$bgeinitparam
-    localparam$type <- "bge"
-    outscore <- BiDAG:::DAGcorescore(
-    j = j - param$bgn,
-    parentnodes = parentnodes - param$bgn,
-    n = param$nsmall,
-    param = localparam
-  )
+    localparam <- param$dp_score$bgeinitparam
+    outscore <- BiDAG:::DAGcorescore(j - bgn, parentnodes - bgn, n, localparam)
   } else {
     parents <- setdiff(parentnodes, iparents)
+    
+    sigmas <- lapply(param$dp_scores, function(x) x$bgeinitparam$sigma)
+    mus    <- lapply(param$dp_scores, function(x) x$bgeinitparam$mu)
+    Ns     <- lapply(param$dp_scores, function(x) x$bgeinitparam$N)
+    
     # find the different exp conditions for these parents
     local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
     outscore <- 0
     for (ii in 1:max(local_exps)) {
-      local_stats <- combinecovs(param$sigmas, param$mus, param$Ns, which(local_exps == ii), c(j, parents) - param$bgn)
+      local_stats <- combinecovs(sigmas, mus, Ns, which(local_exps == ii), c(j, parents) - param$bgn)
       localparam <- BGeaugment(local_stats$sigma, local_stats$mu, local_stats$N, param$n, param$am, param$aw, param$logedgepmat)
       if (length(parents) > 0) {
         outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, param$n, localparam)
@@ -355,14 +304,13 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   outscore
 }
 
-
-targetCoreScore <- function (j, parentnodes, n, param, l, condition) {
+targetCoreScore <- function (j, parentnodes, n, param, l) {
   # not depending on cluster param
   lp <- length(parentnodes)
   # extract needed score parameters
   needed <- c(j, parentnodes)
   
-  scoreparam_list <- unlist(lapply(param$i_dp_scoreparam_list[[condition]], `[[`, "scores"), recursive = FALSE)
+  scoreparam_list = unlist(lapply(param$dp_scoreparam_list, `[[`, "scores"), recursive = FALSE)
   scoreparam <- scoreparam_list[[l]]
   K=scoreparam$K
   TN <- scoreparam$TN
@@ -425,58 +373,67 @@ targetCoreScore <- function (j, parentnodes, n, param, l, condition) {
   corescore
 }
 DPscoreDAG <- function(param, dag) {
-  n_aug <- ncol(dag)
-  ## assume same number of DP samples in each condition
-  scoreparam_list_1 <- unlist(
-    lapply(param$i_dp_scoreparam_list[[1]], `[[`, "scores"),
-    recursive = FALSE
-  )
-  L <- length(scoreparam_list_1)
-  dag_scores <- numeric(L)
+  usrpar = param$usrpar
+  bgn = param$bgn
+  n <- ncol(dag)
+  dp_list = param$dp_list
+  M <- length(dp_list)
+  L <- usrpar$dp_n_sample
+  dag_scores <- numeric(L*M)
 
-  for (l in seq_len(L)) {
-    curr_score <- 0
-
-    for (x in seq_len(n_aug)) {
-
-      if (x %in% param$bgnodes) next
-      parents <- which(dag[, x] == 1)
-      iparents <- parents[parents %in% param$bgnodes]
-      obsparents <- setdiff(parents, iparents)
-      x_obs <- x - param$bgn
-      obsparents_obs <- obsparents - param$bgn
-
-      if (length(iparents) == 0) {
-        curr_score <- curr_score + BiDAG:::DAGcorescore(
-          x_obs,
-          obsparents_obs,
-          param$nsmall,
-          param$bgeinitparam
-        )
+  for(m in 1:M) {
+    fit = dp_list[[m]]
+    cat("Scoring DAG ", m, " of ", M, "\n")
+    for (j in (bgn + 1):n) {
+      parentnodes <- which(dag[, j] == 1)
+      iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
+      if (length(iparents) == 0 || nrow(param$exps) < 2) {# use standard BGe score
+        cat("Scoring node ", j, " with standard BGe score\n")
+        localparam <- param$dp_score
+        for (l in 1:L) {
+          s <- (m - 1) * L + l
+          dag_scores[s] <- dag_scores[s] + targetCoreScore(
+            j - bgn,
+            parentnodes - bgn,
+            n - bgn,
+            localparam,
+            l
+          )
+        }
       } else {
-        local_exps <- attr(
-          mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]),
-          "index"
-        )
+        cat("Scoring node ", j, " with DP score\n")
+        parents <- setdiff(parentnodes, iparents)
+        # find the different exp conditions for these parents
+        local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
+        outscore <- 0
+        for (ii in 1:max(local_exps)) {
+          idx_conditions <- which(local_exps == ii)
+          rows <- which(param$expsrows %in% idx_conditions)
 
-        for (ii in seq_len(max(local_exps))) {
-          condition_ids <- which(local_exps == ii)
+          initparamlocal <- param
+          datalocal <- param$obsdata[rows, ]
+          initparamlocal$data <- datalocal
+          initparamlocal$n <- ncol(datalocal)
+          initparamlocal$N <- nrow(datalocal)
 
-          for (condition in condition_ids) {
-            curr_score <- curr_score + targetCoreScore(
-              j = x_obs,
-              parentnodes = obsparents_obs,
-              n = param$nsmall,
-              param = param,
-              l = l,
-              condition = condition
+          Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)      
+          usrpar$membershipp_list <- list(list(membershipp = Gamma_sample))
+          dpscore <- dpscoreparameters(initparamlocal, usrpar = usrpar)
+
+          for (l in 1:L) {
+            s <- (m - 1) * L + l
+
+            dag_scores[s] <- dag_scores[s] + targetCoreScore(
+              j - bgn,
+              parents - bgn,
+              n - bgn,
+              dpscore,
+              l
             )
           }
         }
-      }
-    }
-
-    dag_scores[l] <- curr_score
+      }     
+    }    
   }
   logMeanExpLogs(dag_scores)
 }
@@ -485,7 +442,7 @@ DPscoreDAG <- function(param, dag) {
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------
 set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(pctesttype = "bge")) {
   start <- Sys.time()
-  cor_mat <- cor(cbind(Imat, data))
+  cor_mat <- cor(data)
   startspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
 
   if(method == "DP") {
@@ -506,8 +463,7 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
       fitspace <- 1 * (graph2m(g))
     }
     if(usrpar$dp_fitspace == "dual") {
-      cor_mat <- cor(data)
-      fitspace <- dual_pc(cor_mat, nrow(data), alpha = alpha, skeleton = T)
+      fitspace <- startspace
     }  
     if(usrpar$dp_fitspace == "full") {
       fitspace <- 1 - diag(ncol(data))
@@ -629,304 +585,14 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
   
   return(bge.fit)
 }
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-## Generate data
-## 
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-min_detectable_r <- function(N, q = 0, alpha = 0.05, power = 0.8) {
-  T_star <- abs(qnorm(alpha / 2))
-  z_power <- qnorm(power)
-  tanh((T_star + z_power) / sqrt(N - q - 3))
-}
-pcor_from_cor <- function(R) {
-  P <- -psolve(R)
-  diag(P) <- 1
-  P
-}
-make_detectable_truegraph <- function(truegraph, R, N,
-                                      alpha = 0.05,
-                                      power = 0.8) {
-  p <- ncol(truegraph)
-  q <- p - 2 # max conditioning set size for PC algorithm is p-2
-
-  pcor <- pcor_from_cor(R)
-
-  threshold <- min_detectable_r(
-    N = N,
-    q = q,
-    alpha = alpha,
-    power = power
-  )
-
-  detectable <- truegraph * 0
-  edge_idx <- which(truegraph == 1, arr.ind = TRUE)
-
-  for (e in seq_len(nrow(edge_idx))) {
-    i <- edge_idx[e, 1]
-    j <- edge_idx[e, 2]
-
-    if (abs(pcor[i, j]) >= threshold) {
-      detectable[i, j] <- 1
-    }
-  }
-  dimnames(detectable) <- dimnames(truegraph)
-  detectable
-}
-B_to_R <- function(B, O) {
-  p <- ncol(B)
-  IB <- solve(diag(p) - B)
-  S <- IB %*% diag(O) %*% t(IB)
-  cov2cor(S)
-}
-simulate_bimodal_student <- function(dag, n, bimodal_sep = 2, df = 3,
-                             return_model = FALSE) {
-  model1 <- corr(dag)
-  model2 <- corr(dag)
-
-  n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
-  n2 <- n - n1
-
-  det1 <- make_detectable_truegraph(truegraph = dag, R = model1$R,  N = n1)
-  det2 <- make_detectable_truegraph(truegraph = dag, R = model2$R,  N = n2)
-
-  detectable <- 1 * ((det1 + det2) > 0)
-
-  model1$B <- model1$B * detectable
-  model2$B <- model2$B * detectable
-
-  model1$R <- B_to_R(model1$B, model1$O)
-  model2$R <- B_to_R(model2$B, model2$O)
-
-  X1 <- rmvt(n1, sigma = model1$R, df = df)
-  X2 <- rmvt(n2, sigma = model2$R, df = df)
-
-  v <- rnorm(ncol(X2))
-  v <- v / sqrt(sum(v^2))
-  shift <- bimodal_sep * v
-  X2 <- sweep(X2, 2, shift, "+")
-
-  raw_mean = colMeans(rbind(X1, X2))
-  raw_sd = apply(rbind(X1, X2), 2, sd)
-
-  data <- standardize(rbind(X1, X2))
-  if (is.null(colnames(data))) {
-    colnames(data) <- paste0("v", seq_len(ncol(data)))
-  }
-
-  if (return_model) {
-    return(list(
-      data = data,
-      model1 = model1,
-      model2 = model2,
-      n1 = n1,
-      n2 = n2,
-      raw_mean = raw_mean,
-      raw_sd = raw_sd,
-      detectable_truegraph = as(detectable, "matrix")
-    ))
-  }
-
-  data  
-}
-simulate_bimodal <- function(dag, n, bimodal_sep = 2,
-                             return_model = FALSE) {
-  model1 <- corr(dag)
-  model2 <- corr(dag)
-
-  n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
-  n2 <- n - n1
-
-  det1 <- make_detectable_truegraph(truegraph = dag, R = model1$R,  N = n1)
-  det2 <- make_detectable_truegraph(truegraph = dag, R = model2$R,  N = n2)
-
-  detectable <- 1 * ((det1 + det2) > 0)
-
-  model1$B <- model1$B * detectable
-  model2$B <- model2$B * detectable
-
-  model1$R <- B_to_R(model1$B, model1$O)
-  model2$R <- B_to_R(model2$B, model2$O)
-
-  X1 <- simulate(model1$B, model1$O, n1)
-  X2 <- simulate(model2$B, model2$O, n2)
-
-  v <- rnorm(ncol(X2))
-  v <- v / sqrt(sum(v^2))
-  shift <- bimodal_sep * v
-  X2 <- sweep(X2, 2, shift, "+")
-
-  raw_mean = colMeans(rbind(X1, X2))
-  raw_sd = apply(rbind(X1, X2), 2, sd)
-
-  data <- standardize(rbind(X1, X2))
-  if (is.null(colnames(data))) {
-    colnames(data) <- paste0("v", seq_len(ncol(data)))
-  }
-
-  if (return_model) {
-    return(list(
-      data = data,
-      model1 = model1,
-      model2 = model2,
-      n1 = n1,
-      n2 = n2,
-      raw_mean = raw_mean,
-      raw_sd = raw_sd,
-      detectable_truegraph = as(detectable, "matrix")
-    ))
-  }
-
-  data
-}
-bimodal_err <- function(n1, n2, var, sep_sd=2) {
-  sd0 <- sqrt(var)
-  shift <- sep_sd * sd0
-  c(
-    rnorm(n1, mean = -shift, sd = sd0),
-    rnorm(n2, mean =  shift, sd = sd0)
-  )
-}
-
-simulate_bimodal_one_node <- function(g, n, err=NULL, bimodal_sep=2,
-                             return_model = FALSE) {
-  # Randomly simulates data.
-  # g = dag
-  # n = sample size
-  # err = additive error distribution
-  
-  model <- corr(g)
-
-  n1 <- sample(floor(0.2 * n):ceiling(0.8 * n), 1)
-  n2 <- n - n1
-
-  det <- make_detectable_truegraph(truegraph = g, R = model$R,  N = n)
-  detectable <- 1 * (det > 0)
-  model$B <- model$B * detectable
-  model$R <- B_to_R(model$B, model$O)
-
-  B <- model$B
-  O <- model$O
-
-  
-
-  # p = |variables|
-  p <- ncol(B)
-  
-  # reorder B and O
-  ord <- sofic_order(B)
-  B <- B[ord, ord]
-  O <- O[ord]
-  
-  # set default additive error as normal
-  if (is.null(err)) {
-    err <- function(n, var) rnorm(n, 0, sqrt(var))
-  }
-
-  # source nodes with at least one child
-  source_parents_ord <- which(rowSums(B != 0) == 0 & colSums(B != 0) > 0)
-  
-  if (length(source_parents_ord) == 0) {
-    stop("No source parent node found.")
-  }
-  # choose one random source parent in reordered coordinates
-  chosen_ord <- sample(source_parents_ord, 1)
-  
-  # simulate data
-  X <- matrix(0, n, p)
-  for (i in 1 : p) {
-    
-    # linear effect
-    for (j in which(B[i,] != 0)) {
-      X[, i] <- X[, i] + B[i, j] * X[, j]
-    }
-    
-    # additive error
-    if (i == chosen_ord) {
-      X[, i] <- X[, i] + bimodal_err(n1, n2, O[i], sep_sd=bimodal_sep)
-    } else {
-      X[, i] <- X[, i] + err(n, O[i])
-    }
-  }
-  # save node
-  chosen_original <- ord[chosen_ord]
-  bimodal_node_name = colnames(X)[chosen_original]
-
-  # reorder X
-  ord <- invert_order(ord)
-  X <- X[, ord]
-  
-  raw_mean = colMeans(X)
-  raw_sd = apply(X, 2, sd)
-
-  X <- standardize(X)
-  if (is.null(colnames(X))) {
-    colnames(X) <- paste0("v", seq_len(ncol(X)))
-  }
-
-  if (return_model) {
-    return(list(
-      data = X,
-      model = model,
-      n1 = n1,
-      n2 = n2,
-      raw_mean = raw_mean,
-      raw_sd = raw_sd,
-      bimodal_node = chosen_original,
-      bimodal_node_name = bimodal_node_name,
-      detectable_truegraph = as(detectable, "matrix")
-      ))
-  }
-
-  return(X)  
-}
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-## Non interventional effects
-## Bestie equivalent functions
-## ---------------------------------------------------------------------------------------------------------------------------------------------------------
-DP_sample_node_beta_i <- function(j, parentNodes, dataParams, sample = TRUE) {
-  ## skip intervention/background nodes
-  if (j %in% dataParams$bgnodes) {
-    return(numeric(0))
-  }
-  bgn <- dataParams$bgn
-  ## augmented -> observed indices
-  j_obs <- j - bgn
-  iparents <- parentNodes[parentNodes %in% dataParams$bgnodes]
-  obsParents <- setdiff(parentNodes, iparents)
-  obsParents_obs <- obsParents - bgn
-
-  if (length(obsParents_obs) == 0) {
-    return(numeric(0))
-  }
-  ## For causal effects, use natural/observational state.
-  ## If no intervention parent, use global all-zero condition.
-  if (length(iparents) == 0) {
-    exp_conds <- dataParams$exps
-    condition <- which(rowSums(exp_conds) == 0)[1]
-  } else {
-    exp_conds <- mgcv::uniquecombs(
-      dataParams$exps[, iparents, drop = FALSE]
-    )
-    local_exps <- attr(exp_conds, "index")
-    ii0 <- which(rowSums(exp_conds) == 0)[1]
-
-    global_conditions <- which(local_exps == ii0)
-    condition <- which(rowSums(dataParams$exps) == 0)[1]
-  }
-  scoreparam_blocks <- dataParams$i_dp_scoreparam_list[[condition]]
-  child_name <- colnames(dataParams$obsdata)[j_obs]
-  d_idx <- which(vapply(
-    scoreparam_blocks,
-    function(x) identical(x$meta$child, child_name),
-    logical(1)
-  ))
-
-  if (length(d_idx) == 0) {
-    stop(paste("No DP score parameters found for child:", child_name))
-  }
-  d <- sample(d_idx, 1)
-  scoreparam_list <- scoreparam_blocks[[d]]$scores
-
+# effect estimation ##############################################################
+# Bestie
+DP_sample_node_beta <- function(j, parentNodes, dataParams, sample = TRUE) {
+  # Chose one DP draw for the scoring:
+  # If several DP fits exist for the same child, choose one
+  d <- sample(1:length(dataParams$dp_scoreparam_list), 1)
+  scoreparam_list <- dataParams$dp_scoreparam_list[[d]]$scores
+  # Choose one posterior DP membership draw
   if (sample) {
     l <- sample(seq_along(scoreparam_list), 1)
   } else {
@@ -934,19 +600,22 @@ DP_sample_node_beta_i <- function(j, parentNodes, dataParams, sample = TRUE) {
   }
   scoreparam <- scoreparam_list[[l]]
 
+  # find clusters and cluster weights
   K <- scoreparam$K
   beta_by_cluster <- vector("list", K)
 
+  # same as Bestie:::DAGparametersCore but for each cluster
   for (k in seq_len(K)) {
     TNk <- scoreparam$TN[[k]]
-    df <- scoreparam$awpN[k] - dataParams$nsmall + length(obsParents_obs) + 1
-    R11 <- TNk[obsParents_obs, obsParents_obs, drop = FALSE]
-    R12 <- TNk[obsParents_obs, j_obs, drop = FALSE]
+    df <- scoreparam$awpN[k] - dataParams$n + length(parentNodes) + 1
+    R11 <- TNk[parentNodes, parentNodes, drop = FALSE]
+    R12 <- TNk[parentNodes, j, drop = FALSE]
     R11inv <- solve(R11)
     mb <- R11inv %*% R12
-    divisor <- TNk[j_obs, j_obs] - t(R12) %*% mb
+    divisor <- TNk[j, j] - t(R12) %*% mb
     sigma <- as.numeric(divisor / df) * R11inv
     if (sample) {
+      # same as Bestie:::SampleParameters
       beta_by_cluster[[k]] <- as.vector(
         mvtnorm::rmvt(
           1,
@@ -977,27 +646,50 @@ DP_sample_node_beta_i <- function(j, parentNodes, dataParams, sample = TRUE) {
 
 DP_DAGintervention <- function(incidences, dataParams, sample = TRUE) {
   one_dag <- function(incidence) {
-    p <- dataParams$nsmall
+    usrpar <- dataParams$usrpar
+    L <- usrpar$dp_n_sample
     bgn <- dataParams$bgn
-    coeffMatrix <- matrix(0, p, p)
-    colnames(coeffMatrix) <- rownames(coeffMatrix) <- colnames(dataParams$obsdata)
+    n <- ncol(incidence)
+    p <- ncol(incidence)
+    coeffMatrix <- matrix(0, p - bgn, p - bgn)
+    colnames(coeffMatrix) <- rownames(coeffMatrix) <- colnames(incidence)[(bgn + 1):p]
+    for (j in (bgn + 1):p) {
+      parentNodes <- which(incidence[, j] == 1)
+      iparents <- parentNodes[which(parentNodes %in% dataParams$bgnodes)]
+      parents <- setdiff(parentNodes, iparents)
+      if (length(parents) == 0) next
+      if (length(iparents) == 0 || nrow(dataParams$exps) < 2) {# use standard BGe score
+        localparam <- dataParams$dp_score
+      } else {
+        parents <- setdiff(parentNodes, iparents)
+        # find the different exp conditions for these parents
+        exp_conds <- mgcv::uniquecombs(dataParams$exps[, iparents, drop = FALSE])
+        local_exps <- attr(exp_conds, "index")
+        ii <- which(rowSums(exp_conds) == 0) # this defines the observational state
+        idx_conditions <- which(local_exps == ii)
+        rows <- which(dataParams$expsrows %in% idx_conditions)
 
-    for (j_aug in dataParams$mainnodes) {
-      j_obs <- j_aug - bgn
-      parentNodes_aug <- which(incidence[, j_aug] == 1)
-      obsParents_aug <- setdiff(parentNodes_aug, dataParams$bgnodes)
+        initparamlocal <- dataParams
+        datalocal <- dataParams$obsdata[rows, ]
+        initparamlocal$data <- datalocal
+        initparamlocal$n <- ncol(datalocal)
+        initparamlocal$N <- nrow(datalocal)
 
-      if (length(obsParents_aug) == 0) next
-      beta <- DP_sample_node_beta_i(
-        j = j_aug,
-        parentNodes = parentNodes_aug,
-        dataParams = dataParams,
+        fit <- sample(dataParams$dp_list, 1)[[1]]
+        Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
+        usrpar$membershipp_list <- list(list(membershipp = Gamma_sample))
+        localparam <- dpscoreparameters(initparamlocal, usrpar = usrpar)
+      }
+
+      beta <- DP_sample_node_beta(
+        j = j - bgn,
+        parentNodes = parents - bgn,
+        dataParams = localparam,
         sample = sample
       )
-      obsParents_obs <- obsParents_aug - bgn
-      coeffMatrix[obsParents_obs, j_obs] <- beta
+      coeffMatrix[parents - bgn, j - bgn] <- beta
     }
-    solve(diag(p) - coeffMatrix)
+    solve(diag(p - bgn) - coeffMatrix)
   }
   if (is.matrix(incidences)) {
     return(one_dag(incidences))
