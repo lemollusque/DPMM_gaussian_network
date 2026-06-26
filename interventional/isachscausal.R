@@ -27,6 +27,7 @@ insertSource("ifnsdp.R", package = "BiDAG")
 # load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
 source("itoyDAGfunctionsSachs.R")
 source("intfns.R")
+source("comparison_algs.R")
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -85,4 +86,6 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             sortlabs = 1:11, title_text = "")
 dev.off()
 
+
+compareFit(data4plot$alldigraphs, trueDAGsachs, bgn=1:3)
 
