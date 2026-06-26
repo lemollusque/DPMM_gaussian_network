@@ -649,25 +649,14 @@ DP_DAGintervention <- function(incidences, dataParams, sample = TRUE) {
       if (length(parents) == 0) next
       if (length(iparents) == 0 || nrow(dataParams$exps) < 2) {# use standard BGe score
         localparam <- dataParams$dp_score
-      } else {
-        parents <- setdiff(parentNodes, iparents)
+      } 
+      else {
         # find the different exp conditions for these parents
         exp_conds <- mgcv::uniquecombs(dataParams$exps[, iparents, drop = FALSE])
         local_exps <- attr(exp_conds, "index")
         ii <- which(rowSums(exp_conds) == 0) # this defines the observational state
-        idx_conditions <- which(local_exps == ii)
-        rows <- which(dataParams$expsrows %in% idx_conditions)
-
-        initparamlocal <- dataParams
-        datalocal <- dataParams$obsdata[rows, ]
-        initparamlocal$data <- datalocal
-        initparamlocal$n <- ncol(datalocal)
-        initparamlocal$N <- nrow(datalocal)
-
-        fit <- sample(dataParams$dp_list, 1)[[1]]
-        Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
-        usrpar$membershipp_list <- list(list(membershipp = Gamma_sample))
-        localparam <- dpscoreparameters(initparamlocal, usrpar = usrpar)
+        key <- paste(sort(which(local_exps == ii)), collapse = "_")
+        localparam <- dataParams$dp_scores[[key]]$score
       }
 
       beta <- DP_sample_node_beta(

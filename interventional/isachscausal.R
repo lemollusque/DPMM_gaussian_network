@@ -35,7 +35,7 @@ library(rsvg) ## for converting svg to png
 
 inputData <- scale(data)
 nDAGs <- 50
-nSeeds <- 10
+nSeeds <- 50
 batch <- 100 + 1:nSeeds
 labels4plot <- colnames(inputData) 
 nNodes <- length(labels4plot)
@@ -45,9 +45,9 @@ dp_usrpar <- list(
   am = 0.01,
   Imat = Imat,
   dp_prior = list(strength = 0.0002, discount = 0),
-  dp_mcmc = list(niter = 500, nburn = 300, model="LS"),
-  dp_n_sample = 5,
-  dp_fits = 1,
+  dp_mcmc = list(niter = 4000, nburn = 3000, model="LS"),
+  dp_n_sample = 100,
+  dp_fits = 2,
   dp_fitspace = "full",
   bgremove = TRUE
 )
