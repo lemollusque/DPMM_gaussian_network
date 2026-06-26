@@ -82,12 +82,10 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
   
   # prepare dirichlet gamma list
   Gamma_list <- list()
-  dp <- list()
   for (f in seq_len(dp_fits)) {
     output <- list(out_param = TRUE, out_type = "FULL")  
     fit <- PYdensity(y = data, mcmc = mcmc, prior = prior, output = output)
     Gamma_sample <- dp_membership_probs(fit, data , nrow(data), L)
-    dp[[f]] <- fit
     Gamma_list[[f]] <- list(membershipp = Gamma_sample)
   }
   usrpar$membershipp_list = Gamma_list
@@ -100,10 +98,29 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
     initparam$type <- "usr" # make sure it knows that we have redefined the score
     initparam$pctesttype <- "bge"
     initparam$bgremove <- usrpar$bgremove
-    dp_scores <- vector("list", nrow(exps))
-    dp_list <- list()
-    for (ii in 1:nrow(exps)) {
-      datalocal <- data[which(expsrows == ii), , drop = FALSE]
+
+    make_key <- function(idx) paste(sort(idx), collapse = "_")
+    all_subset_keys <- character(0)
+    all_subsets <- list()
+    for (r in seq_len(bgn)) {
+      for (ip in combn(seq_len(bgn), r, simplify = FALSE)) {
+        local_exps <- attr(mgcv::uniquecombs(exps[, ip, drop = FALSE]), "index")
+        for (ii in seq_len(max(local_exps))) {
+          idx <- which(local_exps == ii)
+          key <- make_key(idx)
+          if (!(key %in% all_subset_keys)) {
+            all_subset_keys <- c(all_subset_keys, key)
+            all_subsets[[key]] <- idx
+          }
+        }
+      }
+    }
+
+    dp_scores <- list()
+    for (key in names(all_subsets)) {
+      idx_conditions <- all_subsets[[key]]
+      rows <- which(expsrows %in% idx_conditions) 
+      datalocal <- data[rows, , drop = FALSE]
       initparamlocal <- initparam
       initparamlocal$data <- datalocal
       initparamlocal$n <- ncol(datalocal)
@@ -114,19 +131,19 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
         output <- list(out_param = TRUE, out_type = "FULL")  
         fit <- PYdensity(y = datalocal, mcmc = mcmc, prior = prior, output = output)
         Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
-        dp_list[[length(dp_list) + 1]]  <- fit
         Gamma_list[[f]] <- list(membershipp = Gamma_sample)
       }
-      usrpar$membershipp_list = Gamma_list
-      dpscore <- dpscoreparameters(initparamlocal, usrpar = usrpar)
+      usrparlocal <- usrpar
+      usrparlocal$membershipp_list <- Gamma_list
       
-      dp_scores[[ii]] <- dpscore
+      dp_scores[[key]] <- list(
+        idx_conditions = idx_conditions,
+        score = dpscoreparameters(initparamlocal, usrparlocal)
+      )
     }
     initparam$dp_scores <- dp_scores
-    initparam$dp_list <- dp_list
   } else {
     initparam$dp_scores <- list(dp_score)
-    initparam$dp_list <- dp
   }
   
   initparam$obsdata <- data
@@ -283,17 +300,12 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
     outscore <- BiDAG:::DAGcorescore(j - bgn, parentnodes - bgn, n, localparam)
   } else {
     parents <- setdiff(parentnodes, iparents)
-    
-    sigmas <- lapply(param$dp_scores, function(x) x$bgeinitparam$sigma)
-    mus    <- lapply(param$dp_scores, function(x) x$bgeinitparam$mu)
-    Ns     <- lapply(param$dp_scores, function(x) x$bgeinitparam$N)
-    
     # find the different exp conditions for these parents
     local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
     outscore <- 0
     for (ii in 1:max(local_exps)) {
-      local_stats <- combinecovs(sigmas, mus, Ns, which(local_exps == ii), c(j, parents) - param$bgn)
-      localparam <- BGeaugment(local_stats$sigma, local_stats$mu, local_stats$N, param$n, param$am, param$aw, param$logedgepmat)
+      key <- paste(sort(which(local_exps == ii)), collapse = "_")
+      localparam <- param$dp_scores[[key]]$score$bgeinitparam
       if (length(parents) > 0) {
         outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, param$n, localparam)
       }  else {
@@ -376,64 +388,41 @@ DPscoreDAG <- function(param, dag) {
   usrpar = param$usrpar
   bgn = param$bgn
   n <- ncol(dag)
-  dp_list = param$dp_list
-  M <- length(dp_list)
   L <- usrpar$dp_n_sample
-  dag_scores <- numeric(L*M)
+  dag_scores <- numeric(L)
 
-  for(m in 1:M) {
-    fit = dp_list[[m]]
-    cat("Scoring DAG ", m, " of ", M, "\n")
-    for (j in (bgn + 1):n) {
-      parentnodes <- which(dag[, j] == 1)
-      iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
-      if (length(iparents) == 0 || nrow(param$exps) < 2) {# use standard BGe score
-        cat("Scoring node ", j, " with standard BGe score\n")
-        localparam <- param$dp_score
+  for (j in (bgn + 1):n) {
+    parentnodes <- which(dag[, j] == 1)
+    iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
+    if (length(iparents) == 0 || nrow(param$exps) < 2) {# use standard BGe score
+      localparam <- param$dp_score
+      for (l in 1:L) {
+        dag_scores[l] <- dag_scores[l] + targetCoreScore(
+          j - bgn,
+          parentnodes - bgn,
+          n - bgn,
+          localparam,
+          l
+        )
+      }
+    } else {
+      parents <- setdiff(parentnodes, iparents)
+      # find the different exp conditions for these parents
+      local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
+      for (ii in 1:max(local_exps)) {
+        key <- paste(sort(which(local_exps == ii)), collapse = "_")
+        dpscore <- param$dp_scores[[key]]$score
         for (l in 1:L) {
-          s <- (m - 1) * L + l
-          dag_scores[s] <- dag_scores[s] + targetCoreScore(
+          dag_scores[l] <- dag_scores[l] + targetCoreScore(
             j - bgn,
-            parentnodes - bgn,
+            parents - bgn,
             n - bgn,
-            localparam,
+            dpscore,
             l
           )
         }
-      } else {
-        cat("Scoring node ", j, " with DP score\n")
-        parents <- setdiff(parentnodes, iparents)
-        # find the different exp conditions for these parents
-        local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
-        outscore <- 0
-        for (ii in 1:max(local_exps)) {
-          idx_conditions <- which(local_exps == ii)
-          rows <- which(param$expsrows %in% idx_conditions)
-
-          initparamlocal <- param
-          datalocal <- param$obsdata[rows, ]
-          initparamlocal$data <- datalocal
-          initparamlocal$n <- ncol(datalocal)
-          initparamlocal$N <- nrow(datalocal)
-
-          Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)      
-          usrpar$membershipp_list <- list(list(membershipp = Gamma_sample))
-          dpscore <- dpscoreparameters(initparamlocal, usrpar = usrpar)
-
-          for (l in 1:L) {
-            s <- (m - 1) * L + l
-
-            dag_scores[s] <- dag_scores[s] + targetCoreScore(
-              j - bgn,
-              parents - bgn,
-              n - bgn,
-              dpscore,
-              l
-            )
-          }
-        }
-      }     
-    }    
+      }
+    }         
   }
   logMeanExpLogs(dag_scores)
 }
