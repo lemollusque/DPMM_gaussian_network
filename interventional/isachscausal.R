@@ -78,7 +78,7 @@ foreach(
 
 data4plot <- loadsamples(seeds=batch, nn=nNodes)
 
-graph2plot <- dagviz(data4plot$alldigraphs, rm_nodes = 1:6, style_mat = matrix(1, 11, 11), title_text = "")
+graph2plot <- dagviz(data4plot$alldigraphs, rm_nodes = 1:ncol(Imat), style_mat = matrix(1, 11, 11), title_text = "")
 rsvg_png(charToRaw(export_svg(graph2plot)), "SachsDAGs.png", width = 4000)
 
 pdf("SachsEffects.pdf", width = 6, height = 6)
@@ -87,5 +87,5 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
 dev.off()
 
 
-compareFit(data4plot$alldigraphs, trueDAGsachs, bgn=1:3)
+compareFit(data4plot$alldigraphs, trueDAGsachs, bgn=1:ncol(Imat))
 
