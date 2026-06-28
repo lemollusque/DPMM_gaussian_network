@@ -64,13 +64,14 @@ foreach(
   source("ifnsdp.R")
   insertSource("ifnsdp.R", package = "BiDAG")
   source("intfns.R")
+  source("itoyDAGfunctionsSachs.R")
   
   timing <- proc.time()
   print(paste("Seed is", seednumber))
   sampleDAGs(inData=inputData, scoretype = "usr",
              usrpar = dp_usrpar,
              nDigraphs=nDAGs, seed=seednumber,
-             weighted=FALSE)
+             weighted=TRUE)
   computeEffects(n=nNodes, seed=seednumber, DP=TRUE)
   print(proc.time() - timing)
   TRUE
