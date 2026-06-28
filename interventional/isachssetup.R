@@ -6,7 +6,7 @@ source("./intfns.R") # load other functions
 ## Sachs data
 sachs_data <- read.csv("../Sachs/sachs_data_int.csv", sep = "\t")
 # we take the first 7 experiments following Wang et al
-sachs_data_sel <- sachs_data[which(sachs_data[, 12] < 5), ] #take less for DPs
+sachs_data_sel <- sachs_data[which(sachs_data[, 12] < 8), ] #take less for DPs
 Ts <- sachs_data_sel[, 12] - 1
 n_exps <- table(Ts)
 # and treat the first two as observational
