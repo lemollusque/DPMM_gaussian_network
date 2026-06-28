@@ -1,24 +1,33 @@
+# load libraries
+packages <- c(
+  "BiDAG",
+  "dplyr",
+  "ggplot2",
+  "foreach",
+  "doFuture",
+  "future",
+  "progressr",
+  "doRNG",
+  "mvtnorm",
+  "BayesFactor",
+  "matrixStats",
+  "BNPmix",
+  "data.table",
+  "mclust",
+  "pcalg",
+  "graph"
+)
+
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
+
 # preprocessing etc of the Sachs data
 source("./isachssetup.R")
 
-# load libraries
-library(BiDAG)
-library(Bestie)
-
-library(matrixStats)
-library(dplyr)
-library(ggplot2)
-library(foreach)
-library(doFuture)
-library(future)
-library(parallelly)
-library(mclust)
-library(progressr)
-library(doRNG)
-library(mvtnorm)
-library(BayesFactor)
-library(matrixStats)
-library(BNPmix)
 
 # Use BiDAG with intervention scoring
 source("ifnsdp.R")
@@ -59,7 +68,7 @@ foreach(
   insertSource("ifnsdp.R", package = "BiDAG")
   source("intfns.R")
   source("itoyDAGfunctionsSachs.R")
-
+  
   timing <- proc.time()
   print(paste("Seed is", seednumber))
   sampleDAGs(inData=inputData, scoretype = "usr",
