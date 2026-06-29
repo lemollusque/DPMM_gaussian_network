@@ -297,7 +297,7 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
   iparents <- parentnodes[which(parentnodes %in% param$bgnodes)]
   if (length(iparents) == 0 || nrow(param$exps) < 2) {# use standard BGe score
     localparam <- param$dp_score$bgeinitparam
-    outscore <- BiDAG:::DAGcorescore(j - bgn, parentnodes - bgn, n, localparam)
+    outscore <- BiDAG:::DAGcorescore(j - bgn, parentnodes - bgn, localparam$n, localparam)
   } else {
     parents <- setdiff(parentnodes, iparents)
     # find the different exp conditions for these parents
@@ -307,9 +307,9 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
       key <- paste(sort(which(local_exps == ii)), collapse = "_")
       localparam <- param$dp_scores[[key]]$score$bgeinitparam
       if (length(parents) > 0) {
-        outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, param$n, localparam)
+        outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, localparam$n, localparam)
       }  else {
-        outscore <- outscore + BiDAG:::DAGcorescore(1, parents, param$n, localparam)
+        outscore <- outscore + BiDAG:::DAGcorescore(1, parents, localparam$n, localparam)
       }
     }
   }
