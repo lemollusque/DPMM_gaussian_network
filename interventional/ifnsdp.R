@@ -81,13 +81,26 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
   initparamlocal$n <- ncol(data)  
   
   # prepare dirichlet gamma list
+  dp_fit_list <- list()
   Gamma_list <- list()
+  counter <- 1
   for (f in seq_len(dp_fits)) {
-    output <- list(out_param = TRUE, out_type = "FULL")  
-    fit <- PYdensity(y = data, mcmc = mcmc, prior = prior, output = output)
-    Gamma_sample <- dp_membership_probs(fit, data , nrow(data), L)
-    Gamma_list[[f]] <- list(membershipp = Gamma_sample)
+    for (ii in seq_len(nrow(exps))) {
+      rows <- which(expsrows == ii)
+      datalocal <- data[rows, , drop = FALSE]
+      output <- list(out_param = TRUE, out_type = "FULL")  
+      fit <- PYdensity(y = datalocal, mcmc = mcmc, prior = prior, output = output)
+      dp_fit_list[[counter]] <- fit
+      Gamma_sample <- dp_membership_probs(fit, data , nrow(data), L)
+      Gamma_list[[counter]] <- list(membershipp = Gamma_sample)
+      counter <- counter + 1
+    }
   }
+
+  #update number of dp fits
+  dp_fits = length(dp_fit_list)
+  usrpar$dp_fits <- dp_fits
+
   usrpar$membershipp_list = Gamma_list
   dp_score <- dpscoreparameters(initparamlocal, usrpar = usrpar)
  
@@ -127,9 +140,8 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
       initparamlocal$N <- nrow(datalocal)
       # prepare dirichlet gamma list
       Gamma_list <- list()
-      for (f in seq_len(dp_fits)) {
-        output <- list(out_param = TRUE, out_type = "FULL")  
-        fit <- PYdensity(y = datalocal, mcmc = mcmc, prior = prior, output = output)
+      for (f in 1:length(dp_fit_list)) {
+        fit <- dp_fit_list[[f]]  
         Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
         Gamma_list[[f]] <- list(membershipp = Gamma_sample)
       }
