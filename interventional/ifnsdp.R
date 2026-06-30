@@ -283,14 +283,7 @@ dpscoreparameters <- function(initparam,
         clusterWeights = clusterWeights
       )
     }
-    initparam$dp_scoreparam_list[[d]] <- list(
-      meta = list(
-        child   = dp_membershipp_list[[d]]$child,
-        parents = dp_membershipp_list[[d]]$parents,
-        vars    = dp_membershipp_list[[d]]$vars
-      ),
-      scores = scoreparam_list
-    )
+    initparam$dp_scoreparam_list[[d]] <- list(scores = scoreparam_list)
   }
 
   # set up bge params with averaged means and covs across DPs
