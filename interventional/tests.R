@@ -43,9 +43,9 @@ dp_usrpar <- list(
   am = 0.01,
   Imat = Imat,
   dp_prior = list(strength = 1, discount = 0),
-  dp_mcmc = list(niter = 500, nburn = 300, model="LS"),
-  dp_n_sample = 5,
-  dp_fits = 1,
+  dp_mcmc = list(niter = 4000, nburn = 3000, model="LS"),
+  dp_n_sample = 100,
+  dp_fits = 5,
   dp_fitspace = "full",
   bgremove = TRUE
 )
