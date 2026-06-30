@@ -57,6 +57,22 @@ dp_membership_probs <- function(fit, Y, N, L = 500) {
   }
   probs_list
 }
+subset_Gamma <- function(Gamma, rows) {
+  Gamma_local <- Gamma[rows, , drop = FALSE]
+
+  keep <- colSums(Gamma_local) > 0
+  Gamma_local <- Gamma_local[, keep, drop = FALSE]
+
+  rs <- rowSums(Gamma_local)
+
+  zero_rows <- rs == 0
+  if (any(zero_rows)) {
+    Gamma_local[zero_rows, ] <- 1 / ncol(Gamma_local)
+    rs <- rowSums(Gamma_local)
+  }
+
+  Gamma_local / rs
+}
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype = "bge", am = 1, edgepmat = NULL, bgremove = TRUE)){
   n <- initparam$n
@@ -129,14 +145,20 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
       initparamlocal$n <- ncol(datalocal)
       initparamlocal$N <- nrow(datalocal)
       # prepare dirichlet gamma list
-      Gamma_list <- list()
+      Gamma_list_local <- vector("list", length(Gamma_list))
       for (f in 1:length(dp_fit_list)) {
-        fit <- dp_fit_list[[f]]  
-        Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
-        Gamma_list[[f]] <- list(membershipp = Gamma_sample)
+        Gamma_sample_local <- lapply(
+          Gamma_list[[f]]$membershipp,
+          subset_Gamma,
+          rows = rows
+        )
+
+        Gamma_list_local[[f]] <- list(
+            membershipp = Gamma_sample_local
+        )
       }
       usrparlocal <- usrpar
-      usrparlocal$membershipp_list <- Gamma_list
+      usrparlocal$membershipp_list <- Gamma_list_local
       
       dp_scores[[key]] <- list(
         idx_conditions = idx_conditions,
