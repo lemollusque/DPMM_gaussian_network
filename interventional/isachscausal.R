@@ -46,10 +46,10 @@ dp_usrpar <- list(
   pctesttype = "bge",
   am = 0.01,
   Imat = Imat,
-  dp_prior = list(strength = 0.0002, discount = 0),
+  dp_prior = list(strength = 1, discount = 0),
   dp_mcmc = list(niter = 4000, nburn = 3000, model="LS"),
   dp_n_sample = 100,
-  dp_fits = 2,
+  dp_fits = 5,
   dp_fitspace = "full",
   bgremove = TRUE
 )
