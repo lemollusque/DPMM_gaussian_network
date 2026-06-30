@@ -41,8 +41,13 @@ my_smooth <- function(data, mapping, ...) {
     )
 }
 
+desired_order <- c(
+  "Raf", "Mek", "Plcg", "PIP2", "PIP3",
+  "Erk", "Akt", "PKA", "PKC", "P38", "Jnk"
+)
+sortlabs <- match(desired_order, colnames(data4plot$alleffs[[1]]))
 ggpairs(
-  sachs.data,
+  sachs.data[, sortlabs],
   upper = list(continuous = wrap("cor", size = 3, digits = 2)),
   lower = list(continuous = my_smooth),
   diag = list(continuous = wrap("barDiag", bins = 30, alpha = 0.5))

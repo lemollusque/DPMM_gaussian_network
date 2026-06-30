@@ -43,9 +43,15 @@ data4plot <- loadsamples(seeds=batch, nn=nNodes)
 graph2plot <- dagviz(data4plot$alldigraphs, style_mat = matrix(1, 11, 11), title_text = "")
 rsvg_png(charToRaw(export_svg(graph2plot)), "Sachs/SachsDAGs.png", width = 4000)
 
+
+desired_order <- c(
+  "Raf", "Mek", "Plcg", "PIP2", "PIP3",
+  "Erk", "Akt", "PKA", "PKC", "P38", "Jnk"
+)
+sortlabs <- match(desired_order, colnames(data4plot$alleffs[[1]]))
 pdf("Sachs/SachsEffects.pdf", width = 6, height = 6)
 plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size = 1.5,
-            sortlabs = 1:11, title_text = "")
+            sortlabs = sortlabs, title_text = "")
 dev.off()
 
 
