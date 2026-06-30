@@ -13,11 +13,22 @@ sampleDAGs <- function(inData, nDigraphs = 50, weighted = FALSE, seed=101, dname
     scoreObject <- scoreparameters(data=inData, ..., 
                                    nodeslabels = colnames(inData))
     #return(scoreObject)
-    set.seed(seed) 
     ## set the seed for the generation of random numbers (for reproducibility)
-    
+    set.seed(seed) 
+    # set start searchspace
+    cor_mat <- cor(scoreObject$data)
+    startspace <- dual_pc(cor_mat, nrow(scoreObject$data), alpha = 0.05, skeleton = T)
+    blacklist <- matrix(0, ncol(scoreObject$data), ncol(scoreObject$data))
+    diag(blacklist) <- 1
+    if (!is.null(scoreObject$bgnodes)) {
+        for (i in scoreObject$bgnodes) {
+            blacklist[, i] <- 1
+        }
+    }
+    startskel <- 1 * (startspace & !blacklist)
+
     # find the search space with iterative search
-    itFit <- iterativeMCMC(scoreObject,
+    itFit <- iterativeMCMC(scoreObject, startspace = startskel, blacklist = blacklist,
                            scoreout = TRUE, compress = FALSE) ## find iterative search space
     searchSpace <- itFit$endspace
     
