@@ -28,7 +28,6 @@ insertSource("ifnsdp.R", package = "BiDAG")
 source("itoyDAGfunctionsSachs.R")
 source("intfns.R")
 source("comparison_algs.R")
-source("dualPC.R")
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -66,7 +65,6 @@ foreach(
   insertSource("ifnsdp.R", package = "BiDAG")
   source("intfns.R")
   source("itoyDAGfunctionsSachs.R")
-  source("dualPC.R")
   
   timing <- proc.time()
   print(paste("Seed is", seednumber))
