@@ -17,7 +17,6 @@ sampleDAGs <- function(inData, nDigraphs = 50, weighted = FALSE, seed=101, dname
     set.seed(seed) 
     # find the search space with iterative search
     itFit <- iterativeMCMC(scoreObject, 
-                           blacklist = blacklist,
                            scoreout = TRUE, compress = FALSE) ## find iterative search space
     searchSpace <- itFit$endspace
     

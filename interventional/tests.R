@@ -27,7 +27,6 @@ insertSource("ifnsdp.R", package = "BiDAG")
 # load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
 source("itoyDAGfunctionsSachs.R")
 source("intfns.R")
-source("dualPC.R")
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
