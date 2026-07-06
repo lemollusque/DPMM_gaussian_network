@@ -405,7 +405,7 @@ DPscoreDAG <- function(param, dag) {
   usrpar = param$usrpar
   bgn = param$bgn
   n <- ncol(dag)
-  L <- usrpar$dp_n_sample
+  L <- usrpar$dp_n_sample * usrpar$dp_fits
   dag_scores <- numeric(L)
 
   for (j in (bgn + 1):n) {
