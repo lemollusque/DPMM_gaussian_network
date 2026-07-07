@@ -444,34 +444,21 @@ DP_sample_node_beta <- function(j, parentNodes, dataParams) {
     mb <- R11inv %*% R12
     divisor <- TNk[j, j] - t(R12) %*% mb
     sigma <- as.numeric(divisor / df) * R11inv
-    if (sample) {
-      # same as Bestie:::SampleParameters
-      beta_by_cluster[[k]] <- as.vector(
-        mvtnorm::rmvt(
-          1,
-          sigma = sigma,
-          df = df,
-          delta = as.vector(mb)
-        )
-      )
-    } else {
-      beta_by_cluster[[k]] <- as.vector(mb)
-    }
-  }
-
-  if (sample) {
-    k <- sample(seq_len(K), 1, prob = scoreparam$clusterWeights)
-    beta_by_cluster[[k]]
-  } else {
-    Reduce(
-      "+",
-      Map(
-        function(beta, w) w * beta,
-        beta_by_cluster,
-        scoreparam$clusterWeights
+    
+    # same as Bestie:::SampleParameters
+    beta_by_cluster[[k]] <- as.vector(
+      mvtnorm::rmvt(
+        1,
+        sigma = sigma,
+        df = df,
+        delta = as.vector(mb)
       )
     )
   }
+
+  k <- sample(seq_len(K), 1, prob = scoreparam$clusterWeights)
+  beta_by_cluster[[k]]
+  
 }
 
 DP_DAGintervention <- function(incidences, dataParams, sample = TRUE) {
