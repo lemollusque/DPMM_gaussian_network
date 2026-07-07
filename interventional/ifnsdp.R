@@ -57,22 +57,6 @@ dp_membership_probs <- function(fit, Y, N, L = 500) {
   }
   probs_list
 }
-subset_Gamma <- function(Gamma, rows) {
-  Gamma_local <- Gamma[rows, , drop = FALSE]
-
-  keep <- colSums(Gamma_local) > 0
-  Gamma_local <- Gamma_local[, keep, drop = FALSE]
-
-  rs <- rowSums(Gamma_local)
-
-  zero_rows <- rs == 0
-  if (any(zero_rows)) {
-    Gamma_local[zero_rows, ] <- 1 / ncol(Gamma_local)
-    rs <- rowSums(Gamma_local)
-  }
-
-  Gamma_local / rs
-}
 #----------------------  BiDAG ----------------------------------
 usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype = "bge", am = 1, edgepmat = NULL, bgremove = TRUE)){
   n <- initparam$n
@@ -97,16 +81,13 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
   initparamlocal$n <- ncol(data)  
   
   # prepare dirichlet gamma list
-  dp_fit_list <- list()
   Gamma_list <- list()
   for (f in seq_len(dp_fits)) {
     output <- list(out_param = TRUE, out_type = "FULL")  
     fit <- PYdensity(y = data, mcmc = mcmc, prior = prior, output = output)
-    dp_fit_list[[f]] <- fit
     Gamma_sample <- dp_membership_probs(fit, data , nrow(data), L)
     Gamma_list[[f]] <- list(membershipp = Gamma_sample)
   }
-
   usrpar$membershipp_list = Gamma_list
   dp_score <- dpscoreparameters(initparamlocal, usrpar = usrpar)
  
@@ -145,20 +126,15 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
       initparamlocal$n <- ncol(datalocal)
       initparamlocal$N <- nrow(datalocal)
       # prepare dirichlet gamma list
-      Gamma_list_local <- vector("list", length(Gamma_list))
-      for (f in 1:length(dp_fit_list)) {
-        Gamma_sample_local <- lapply(
-          Gamma_list[[f]]$membershipp,
-          subset_Gamma,
-          rows = rows
-        )
-
-        Gamma_list_local[[f]] <- list(
-            membershipp = Gamma_sample_local
-        )
+      Gamma_list <- list()
+      for (f in seq_len(dp_fits)) {
+        output <- list(out_param = TRUE, out_type = "FULL")  
+        fit <- PYdensity(y = datalocal, mcmc = mcmc, prior = prior, output = output)
+        Gamma_sample <- dp_membership_probs(fit, datalocal , nrow(datalocal), L)
+        Gamma_list[[f]] <- list(membershipp = Gamma_sample)
       }
       usrparlocal <- usrpar
-      usrparlocal$membershipp_list <- Gamma_list_local
+      usrparlocal$membershipp_list <- Gamma_list
       
       dp_scores[[key]] <- list(
         idx_conditions = idx_conditions,
@@ -445,17 +421,13 @@ DPscoreDAG <- function(param, dag) {
 }
 # effect estimation ##############################################################
 # Bestie
-DP_sample_node_beta <- function(j, parentNodes, dataParams, sample = TRUE) {
+DP_sample_node_beta <- function(j, parentNodes, dataParams) {
   # Chose one DP draw for the scoring:
-  # If several DP fits exist for the same child, choose one
+  # If several DP fits exist 
   d <- sample(1:length(dataParams$dp_scoreparam_list), 1)
   scoreparam_list <- dataParams$dp_scoreparam_list[[d]]$scores
   # Choose one posterior DP membership draw
-  if (sample) {
-    l <- sample(seq_along(scoreparam_list), 1)
-  } else {
-    l <- 1
-  }
+  l <- sample(seq_along(scoreparam_list), 1)
   scoreparam <- scoreparam_list[[l]]
 
   # find clusters and cluster weights
@@ -531,8 +503,7 @@ DP_DAGintervention <- function(incidences, dataParams, sample = TRUE) {
       beta <- DP_sample_node_beta(
         j = j - bgn,
         parentNodes = parents - bgn,
-        dataParams = localparam,
-        sample = sample
+        dataParams = localparam
       )
       coeffMatrix[parents - bgn, j - bgn] <- beta
     }
