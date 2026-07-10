@@ -45,11 +45,10 @@ dp_usrpar <- list(
   pctesttype = "bge",
   am = 0.01,
   Imat = Imat,
-  dp_prior = list(strength = 1, discount = 0),
+  dp_prior = list(strength = 0.0002, discount = 0),
   dp_mcmc = list(niter = 4000, nburn = 3000, model="LS"),
-  dp_n_sample = 100,
-  dp_fits = 5,
-  dp_fitspace = "full",
+  dp_n_sample = 50,
+  dp_fits = 2,
   bgremove = TRUE
 )
 
@@ -86,7 +85,4 @@ pdf("SachsEffects.pdf", width = 6, height = 6)
 plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size = 1.5,
             sortlabs = 1:11, title_text = "")
 dev.off()
-
-
-compareFit(data4plot$alldigraphs, trueDAGsachs, bgn=1:ncol(Imat))
 

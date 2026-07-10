@@ -297,8 +297,18 @@ usrDAGcorescore <- function (j, parentnodes, n, param) {
     local_exps <- attr(mgcv::uniquecombs(param$exps[, iparents, drop = FALSE]), "index")
     outscore <- 0
     for (ii in 1:max(local_exps)) {
-      key <- paste(sort(which(local_exps == ii)), collapse = "_")
-      localparam <- param$dp_scores[[key]]$score$bgeinitparam
+      idx <- which(local_exps == ii)  
+      sigmas <- lapply(idx, function(cc) {param$dp_scores[[as.character(cc)]]$score$bgeinitparam$sigma})
+      mus <- lapply(idx, function(cc) {param$dp_scores[[as.character(cc)]]$score$bgeinitparam$mu})
+      Ns <- sapply(idx, function(cc) {param$dp_scores[[as.character(cc)]]$score$bgeinitparam$N})
+      local_stats <- combinecovs(
+        sigmas = sigmas,
+        mus = mus,
+        Ns = Ns,
+        iis = seq_along(idx),
+        jjs = c(j, parents) - bgn
+      )
+      localparam <- BGeaugment(local_stats$sigma, local_stats$mu, local_stats$N, length(c(j, parents)), param$am, param$aw, NULL)
       if (length(parents) > 0) {
         outscore <- outscore + BiDAG:::DAGcorescore(1, 1:length(parents) + 1, localparam$n, localparam)
       }  else {
