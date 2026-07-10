@@ -170,7 +170,7 @@ ggplot(eff_df, aes(x = effect, colour = cluster, fill = cluster)) +
   geom_vline(xintercept = 0, linetype = "dashed") +
   theme_bw() +
   labs(
-    x = "Jnk → P38",
+    x = "P38 → Jnk",
     y = "Density"
   ) +
   theme(
@@ -276,7 +276,7 @@ ggplot(plot_df,
   coord_cartesian(ylim = c(0, 7)) +
   theme_bw() +
   labs(
-    x = "Jnk → P38",
+    x = "P38 → Jnk",
     y = "Density",
     colour = NULL,
     linetype = NULL
