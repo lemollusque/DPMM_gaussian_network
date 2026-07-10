@@ -1,5 +1,10 @@
+# preprocessing etc of the Sachs data
+source("./isachssetup.R")
+
+# load libraries
 library(BiDAG)
 library(Bestie)
+
 library(matrixStats)
 library(dplyr)
 library(ggplot2)
@@ -15,22 +20,21 @@ library(BayesFactor)
 library(matrixStats)
 library(BNPmix)
 
+# load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
+source("itoyDAGfunctionsSachs.R")
+source("intfns.R")
+source("dualPC.R")
+
+
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
 library(DiagrammeRsvg) ## for exporting svg for plotting to file
 library(rsvg) ## for converting svg to png
 
-source("toyDAGfunctionsSachs.R")
+sachs.data <- scale(data)
+bgn <- ncol(Imat)
+sachs.data <- subset(sachs.data, rowSums(Imat) == 0)
 
-source("comparison_algs.R")
-source("Fourier_fns.R")
-source("dualPC.R")
-source("dao.R")
-source("fns.R")
-insertSource("fns.R", package = "BiDAG")
-
-sachs.data <- read.csv("Sachs/2005_sachs_2_cd3cd28icam2_log_std.csv")
-sachs.data <- as.matrix(sachs.data)
 
 init.seed <- 234
 set.seed(init.seed)
@@ -40,8 +44,8 @@ bge.par = 0.01
 dp_usrpar <- list(
   pctesttype = "bge",
   am = bge.par,
-  dp_prior = list(strength = 1, discount = 0),
-  dp_mcmc = list(niter = 4000, nburn = 3000, model="LS"),
+  dp_prior = list(strength = 0.05, discount = 0),
+  dp_mcmc = list(niter = 4000, nburn = 3999, model="LS"),
   dp_n_sample = 100,
   dp_fits = 1,
   dp_fitspace = "full"
@@ -51,7 +55,7 @@ output <- list(out_param = TRUE, out_type = "FULL")
 
 cor_mat <- cor(sachs.data)
 fitspace <- dual_pc(cor_mat, nrow(sachs.data), alpha = 0.05, skeleton = T)
-child = "Jnk"
+child = "p38"
 parents <- names(which(fitspace[ , child] == 1))
 children <- names(which(fitspace[child, ] == 1))
 neighbour <- setdiff(unique(c(parents, children)), child)
@@ -67,6 +71,7 @@ clusters = unique(hard_clusters)
 
 for (cluster in clusters){
   data = sachs.data[hard_clusters == cluster,]
+  ImatCluster = Imat[hard_clusters == cluster,]
   dname = paste0("cluster", cluster)
   
   nDAGs <- 50
@@ -83,20 +88,22 @@ for (cluster in clusters){
     .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
   ) %dorng% {
     
-    source("fns.R")
-    insertSource("fns.R", package = "BiDAG")
-    source("toyDAGfunctionsSachs.R")
+    # load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
+    source("itoyDAGfunctionsSachs.R")
+    source("intfns.R")
     
     print(paste("Seed is", seednumber))
     
+    load(file = paste0("./saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
+    sampledDAGs <- lapply(sampledDAGs, function(A) {
+      A[-(1:bgn), -(1:bgn), drop = FALSE]
+    })
     
-    load(file = paste0("./Sachs/saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
-    
-    bge.searchspace <- set.searchspace(data, "bge", bge.par)
-    causalMats <- DAGintervention(sampledDAGs, bge.searchspace$score, sample=TRUE)
+    scoreObject <- scoreparameters("bge", data, bgepar = list(am = bge.par))
+    causalMats <- DAGintervention(sampledDAGs, scoreObject, sample=TRUE)
     
     save(causalMats,
-         file=paste0("./Sachs/saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
+         file=paste0("./saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
     
     TRUE
   }
@@ -104,8 +111,8 @@ for (cluster in clusters){
 
 
 # jnk -> p38 analysis
-jnk <- which(colnames(sachs.data) == "Jnk")
-p38 <- which(colnames(sachs.data) == "P38")
+jnk <- which(colnames(sachs.data) == "JNK")
+p38 <- which(colnames(sachs.data) == "p38")
 
 eff_df <- data.frame()
 
@@ -118,14 +125,14 @@ for (cl in clusters) {
     seednumber <- batch[nlevel]
     
     load(file = paste0(
-      "./Sachs/saveout_subpopulation/effects",
+      "./saveout_subpopulation/effects",
       nNodes, "seed", seednumber, dname, ".RData"
     ))
     
     alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
   }
   
-  eff <- sapply(alleffs, function(x) x[jnk, p38])
+  eff <- sapply(alleffs, function(x) x[p38, jnk])
   eff <- eff[eff != 0]
   
   eff_df <- rbind(
@@ -182,46 +189,20 @@ ggplot(eff_df, aes(x = effect, colour = cluster, fill = cluster)) +
 # compare densities
 # DP-BGe
 dname <- ""
-foreach(
-  seednumber = batch,
-  .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
-) %dorng% {
-  
-  source("fns.R")
-  insertSource("fns.R", package = "BiDAG")
-  source("toyDAGfunctionsSachs.R")
-  
-  print(paste("Seed is", seednumber))
-  
-  
-  load(file = paste0("./Sachs/saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
-  
-  causalMats <- DP_DAGintervention(
-      incidences = sampledDAGs,
-      dataParams = scoreObject,
-      sample = TRUE
-    )
-  
-  save(causalMats,
-       file=paste0("./Sachs/saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
-  
-  TRUE
-}
 alleffs <- vector("list", nDAGs * length(batch))
 for (nlevel in seq_along(batch)) {
   seednumber <- batch[nlevel]
   
   load(file = paste0(
-    "./Sachs/saveout_subpopulation/effects",
+    "./saveout_subpopulation/effects",
     nNodes, "seed", seednumber, dname, ".RData"
   ))
   
   alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
 }
 
-eff <- sapply(alleffs, function(x) x[jnk, p38])
+eff <- sapply(alleffs, function(x) x[p38, jnk])
 alleff_dp <- eff[eff != 0]
-
 
 # BGe
 dname = "bge"
@@ -230,19 +211,21 @@ foreach(
   .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
 ) %dorng% {
   
-  source("fns.R")
-  insertSource("fns.R", package = "BiDAG")
-  source("toyDAGfunctionsSachs.R")
+  source("itoyDAGfunctionsSachs.R")
+  source("intfns.R")
   
   print(paste("Seed is", seednumber))
   
-  load(file = paste0("./Sachs/saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
+  load(file = paste0("./saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
+  sampledDAGs <- lapply(sampledDAGs, function(A) {
+    A[-(1:bgn), -(1:bgn), drop = FALSE]
+  })
   
-  bge.searchspace <- set.searchspace(sachs.data, "bge", bge.par)
-  causalMats <- DAGintervention(sampledDAGs, bge.searchspace$score, sample=TRUE)
+  scoreObject <- scoreparameters("bge", sachs.data, bgepar = list(am = bge.par))
+  causalMats <- DAGintervention(sampledDAGs, scoreObject, sample=TRUE)
   
   save(causalMats,
-       file=paste0("./Sachs/saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
+       file=paste0("./saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
   
   TRUE
 }
@@ -251,13 +234,13 @@ for (nlevel in seq_along(batch)) {
   seednumber <- batch[nlevel]
   
   load(file = paste0(
-    "./Sachs/saveout_subpopulation/effects",
+    "./saveout_subpopulation/effects",
     nNodes, "seed", seednumber, dname, ".RData"
   ))
   
   alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
 }
-eff <- sapply(alleffs, function(x) x[jnk, p38])
+eff <- sapply(alleffs, function(x) x[p38, jnk])
 alleff_bge <- eff[eff != 0]
 
 method_cols <- c(
