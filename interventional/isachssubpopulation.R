@@ -20,6 +20,11 @@ library(BayesFactor)
 library(matrixStats)
 library(BNPmix)
 
+# Use BiDAG with intervention scoring
+insertSource("./usrscorefns.R", package = "BiDAG")
+# Use Bestie with intervention scoring
+insertSource("./usrparamfns.R", package = "Bestie")
+
 # load causal pipeline taken and adapted from https://github.com/annlia/causalpipe
 source("itoyDAGfunctionsSachs.R")
 source("intfns.R")
@@ -33,8 +38,6 @@ library(rsvg) ## for converting svg to png
 
 sachs.data <- scale(data)
 bgn <- ncol(Imat)
-sachs.data <- subset(sachs.data, rowSums(Imat) == 0)
-
 
 init.seed <- 234
 set.seed(init.seed)
@@ -61,28 +64,35 @@ children <- names(which(fitspace[child, ] == 1))
 neighbour <- setdiff(unique(c(parents, children)), child)
 
 dp_data = sachs.data[,c(child, neighbour)]
-fit <- PYdensity(y = dp_data, mcmc = dp_usrpar$dp_mcmc, prior = dp_usrpar$dp_prior, output = output)
-
-part <- partition(fit)
-hard_clusters <- part$partitions[1, ]
+fit_em <- Mclust(
+  data = dp_data,
+  G = 6
+)
+n
+hard_clusters <- fit_em$classification
 table(hard_clusters)
 
 clusters = unique(hard_clusters)
 
+nDAGs <- 50
+nSeeds <- 50
+batch <- 100 + 1:nSeeds
+labels4plot <- colnames(sachs.data) 
+nNodes <- length(labels4plot)
+
+plan(multisession, workers = min(length(batch), availableCores() - 1))
+registerDoFuture()
+
 for (cluster in clusters){
-  data = sachs.data[hard_clusters == cluster,]
-  ImatCluster = Imat[hard_clusters == cluster,]
+  data = sachs.data[hard_clusters == cluster,, drop = FALSE]
+  ImatCluster = Imat[hard_clusters == cluster,, drop = FALSE]
+  exps <- mgcv::uniquecombs(ImatCluster)
+  n_exps <- nrow(exps)
+  if (is.null(n_exps)) {
+    n_exps <- 1L
+  }
+  scoreObject_ibge <- scoreparameters(scoretype = "usr", data = data, usrpar = list(pctesttype = "bge", Imat = ImatCluster, am = bge.par))
   dname = paste0("cluster", cluster)
-  
-  nDAGs <- 50
-  nSeeds <- 50
-  batch <- 100 + 1:nSeeds
-  labels4plot <- colnames(sachs.data) 
-  nNodes <- length(labels4plot)
-  
-  plan(multisession, workers = min(length(batch), availableCores() - 1))
-  registerDoFuture()
-  
   foreach(
     seednumber = batch,
     .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
@@ -95,13 +105,13 @@ for (cluster in clusters){
     print(paste("Seed is", seednumber))
     
     load(file = paste0("./saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
-    sampledDAGs <- lapply(sampledDAGs, function(A) {
-      A[-(1:bgn), -(1:bgn), drop = FALSE]
-    })
-    
-    scoreObject <- scoreparameters("bge", data, bgepar = list(am = bge.par))
-    causalMats <- DAGintervention(sampledDAGs, scoreObject, sample=TRUE)
-    
+    if (n_exps == 1L) {
+      sampledDAGs <- lapply(sampledDAGs, function(A) {
+        A[-(1:bgn), -(1:bgn), drop = FALSE]
+      })
+      
+    }
+    causalMats <- DAGintervention(sampledDAGs, scoreObject_ibge, sample=TRUE)
     save(causalMats,
          file=paste0("./saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
     
@@ -110,17 +120,24 @@ for (cluster in clusters){
 }
 
 
-# jnk -> p38 analysis
-jnk <- which(colnames(sachs.data) == "JNK")
-p38 <- which(colnames(sachs.data) == "p38")
+# p38 -> jnk analysis
+p38 <- which(colnames(sachs.data) == "p38") 
+jnk <- which(colnames(sachs.data) == "JNK") 
 
 eff_df <- data.frame()
 
 for (cl in clusters) {
   
   dname <- paste0("cluster", cl)
-  alleffs <- vector("list", nDAGs * length(batch))
+  ImatCluster = Imat[hard_clusters == cl,, drop = FALSE]
+  exps <- mgcv::uniquecombs(ImatCluster)
+  n_exps <- nrow(exps)
+  if (is.null(n_exps)) {
+    print(1)
+    n_exps <- 1L
+  }
   
+  alleffs <- vector("list", nDAGs * length(batch))
   for (nlevel in seq_along(batch)) {
     seednumber <- batch[nlevel]
     
@@ -131,8 +148,13 @@ for (cl in clusters) {
     
     alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
   }
+  if (n_exps == 1){
+    eff <- sapply(alleffs, function(x) x[p38, jnk])
+  }
+  else{
+    eff <- sapply(alleffs, function(x) x[p38 + bgn, jnk + bgn])
+  }
   
-  eff <- sapply(alleffs, function(x) x[p38, jnk])
   eff <- eff[eff != 0]
   
   eff_df <- rbind(
@@ -206,6 +228,7 @@ alleff_dp <- eff[eff != 0]
 
 # BGe
 dname = "bge"
+scoreObject_ibge <- scoreparameters(scoretype = "usr", data = sachs.data, usrpar = list(pctesttype = "bge", Imat = Imat, am = bge.par))
 foreach(
   seednumber = batch,
   .packages = c("BiDAG", "Bestie", "data.table", "mvtnorm")
@@ -217,13 +240,7 @@ foreach(
   print(paste("Seed is", seednumber))
   
   load(file = paste0("./saveout_subpopulation/dagdraw", nNodes, "seed", seednumber, "", ".RData"))
-  sampledDAGs <- lapply(sampledDAGs, function(A) {
-    A[-(1:bgn), -(1:bgn), drop = FALSE]
-  })
-  
-  scoreObject <- scoreparameters("bge", sachs.data, bgepar = list(am = bge.par))
-  causalMats <- DAGintervention(sampledDAGs, scoreObject, sample=TRUE)
-  
+  causalMats <- DAGintervention(sampledDAGs, scoreObject_ibge, sample=TRUE)
   save(causalMats,
        file=paste0("./saveout_subpopulation/effects", nNodes, "seed", seednumber, dname, ".RData"))
   
@@ -240,23 +257,23 @@ for (nlevel in seq_along(batch)) {
   
   alleffs[1:nDAGs + (nlevel - 1) * nDAGs] <- causalMats
 }
-eff <- sapply(alleffs, function(x) x[p38, jnk])
+eff <- sapply(alleffs, function(x) x[p38+bgn, jnk+bgn])
 alleff_bge <- eff[eff != 0]
 
 method_cols <- c(
-  "BGe" = "#F8766D",
-  "DP" = "#619CFF",
+  "iBGe" = "#F8766D",
+  "DP-iBGe" = "#619CFF",
   "Cluster mixture" = "black"
 )
 
 plot_df <- rbind(
-  data.frame(effect = alleff_dp, source = "DP"),
-  data.frame(effect = alleff_bge, source = "BGe"),
+  data.frame(effect = alleff_dp, source = "DP-iBGe"),
+  data.frame(effect = alleff_bge, source = "iBGe"),
   data.frame(effect = eff_df$effect, source = "Cluster mixture")
 )
 plot_df$source <- factor(
   plot_df$source,
-  levels = c("BGe", "DP", "Cluster mixture")
+  levels = c("iBGe", "DP-iBGe", "Cluster mixture")
 )
 
 ggplot(plot_df,
@@ -268,8 +285,8 @@ ggplot(plot_df,
   scale_colour_manual(values = method_cols) +
   scale_linetype_manual(
     values = c(
-      "BGe" = "solid",
-      "DP" = "solid",
+      "iBGe" = "solid",
+      "DP-iBGe" = "solid",
       "Cluster mixture" = "solid"
     )
   ) +
