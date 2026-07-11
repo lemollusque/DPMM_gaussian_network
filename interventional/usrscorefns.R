@@ -13,8 +13,14 @@ usrscoreparameters <- function(initparam, usrpar = list(Imat = NULL, pctesttype 
   
   exps <- mgcv::uniquecombs(Imat) # experimental conditions
   expsrows <- attr(exps, "index") # rows with each condition
- 
-  if (bgn > 0 && nrow(exps) > 1) {
+
+  n_exps <- nrow(exps)
+
+  if (is.null(n_exps)) {
+    n_exps <- 1L
+  }
+
+  if (bgn > 0 && n_exps > 1) {
     initparam <- scoreparameters(scoretype = "bge", data = cbind(Imat,data), weightvector = weightvector, bgnodes = 1:ncol(Imat), bgepar = list(am = usrpar$am),
                                  edgepmat = usrpar$edgepmat)
     initparam$type <- "usr" # make sure it knows that we have redefined the score
