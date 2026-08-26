@@ -460,10 +460,10 @@ plotCompareEffects <- function(effects4plot,
       if (i == (nn + 1) || j == 0) {
         setPlot(xlim = c(-1.1, 1.1), ylim = c(0, 1), col = "darkorchid4")
         if (j == 0 && i < (nn + 1)) {
-          text(0, 0.5, efflabs[ii], cex = label_size)
+          text(0, 0.5, parse(text = efflabs[ii]), cex = label_size)
         }
         if (i == (nn + 1) && j > 0) {
-          text(0, 0.5, efflabs[jj], srt = 90, cex = label_size)
+          text(0, 0.5, parse(text = efflabs[jj]), srt = 90, cex = label_size)
         }
       } else {
         heat_id <- max(1, ceiling(Wscaled[ii, jj] * 100))

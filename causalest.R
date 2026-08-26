@@ -127,12 +127,25 @@ alleffs = computeEffects_mem(
   DP = TRUE
 )
 
+
 # plot effects
 pdf("effects/EstimatedEffects.pdf", width = 6, height = 6)
 plotEffects(effects4plot = alleffs, xmargs = c(0.1, 0.3), label_size = 1.5,
             sortlabs = 1:n, 
             title_text = "")
 dev.off()
+
+# adapt labels
+node_labels <- paste0(
+  "X[",
+  seq_len(ncol(alleffs[[1]])),
+  "]"
+)
+
+alleffs <- lapply(alleffs, function(x) {
+  dimnames(x) <- list(node_labels, node_labels)
+  x
+})
 
 pdf("effects/Wasserstein.pdf", width = 6, height = 6)
 # compare with true effects
@@ -157,6 +170,17 @@ plotEffects(effects4plot = bge.alleffs, xmargs = c(0.1, 0.3), label_size = 1.5,
             title_text = "")
 dev.off()
 
+# adapt labels
+node_labels <- paste0(
+  "X[",
+  seq_len(ncol(bge.alleffs[[1]])),
+  "]"
+)
+
+bge.alleffs <- lapply(bge.alleffs, function(x) {
+  dimnames(x) <- list(node_labels, node_labels)
+  x
+})
 pdf("effects/BGeWasserstein.pdf", width = 6, height = 6)
 # compare with true effects
 Wdist <- plotCompareEffects(
