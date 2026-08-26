@@ -418,6 +418,7 @@ plotCompareEffects <- function(effects4plot,
                                    sigcutoff = 0.025,
                                    xmargs = rep(0.1, 2),
                                    label_size = 1,
+                                   efflabs_size = 1,
                                    title_text = "Distributions of Downstream Causal Effects\n") {
   
   ## Provide labels in sortlabs in a customised order if desired
@@ -494,7 +495,7 @@ plotCompareEffects <- function(effects4plot,
             paste0(
               "W=",
               format(round(Wdist[ii, jj], 2), nsmall = 2)
-            )
+            ), cex=efflabs_size
           )
 
         } else {
@@ -515,7 +516,7 @@ plotCompareEffects <- function(effects4plot,
             paste0(
               "W=",
               format(round(Wdist[ii, jj], 2), nsmall = 2)
-            )
+            ), cex=efflabs_size
           )
         }
       }

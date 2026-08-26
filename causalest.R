@@ -153,6 +153,7 @@ Wdist <- plotCompareEffects(
   effects4plot = alleffs,
   trueEffects = trueEffectSamples,
   sortlabs = 1:n,
+  label_size = 2, efflabs_size=1.5,
   title_text = ""
 )
 dev.off()
@@ -187,6 +188,7 @@ Wdist <- plotCompareEffects(
   effects4plot = bge.alleffs,
   trueEffects = trueEffectSamples,
   sortlabs = 1:n,
+  label_size = 2, efflabs_size=1.5,
   title_text = ""
 )
 dev.off()
