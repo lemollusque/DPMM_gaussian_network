@@ -270,6 +270,7 @@ plotEffects <- function(effects4plot,
                         sigcutoff = 0.025,
                         xmargs = rep(0.1, 2),
                         label_size = 1,
+                        efflabs_size = 1,
                         title_text = "Distributions of Downstream Causal Effects\n"){
   orderingy = c(0, sortlabs) 
   ## Provide labels in sortlabs in a customised order if desired
@@ -315,10 +316,10 @@ plotEffects <- function(effects4plot,
             abline(v=0, col="firebrick3", lty=2)
             u <- par("usr") # The coordinates of the plot area
             text( (u[1]+u[2])/2,(u[3]+u[4])/2, 
-                  format(round(roundeffs[ii,jj], 2), nsmall = 2) )
+                  format(round(roundeffs[ii,jj], 2), nsmall = 2), cex=efflabs_size)
             } else {
               setPlot(xlim=c(-2,2), ylim=c(0,1), col="darkorchid4")
-              text(0, 0.5, roundeffs[ii,jj])
+              text(0, 0.5, roundeffs[ii,jj], cex=efflabs_size)
             }
         }
     }
