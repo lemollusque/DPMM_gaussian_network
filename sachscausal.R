@@ -14,6 +14,8 @@ library(mvtnorm)
 library(BayesFactor)
 library(matrixStats)
 library(BNPmix)
+library(ggplotify)
+library(patchwork)
 
 library(data.table) # for last
 library(DiagrammeR) # for making DAG plot
@@ -54,4 +56,46 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             sortlabs = sortlabs, title_text = "")
 dev.off()
 
+# subplots (make 4 subplots)
+p1 <- as.ggplot(~plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size = 3, efflabs_size=2,
+            sortlabs = sortlabs[1:2], title_text = ""))
+p2 <- as.ggplot(~plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size = 3, efflabs_size=2,
+                             sortlabs = sortlabs[3:5], title_text = ""))
+p3 <- as.ggplot(~plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size = 3, efflabs_size=2,
+                             sortlabs = sortlabs[6:8], title_text = ""))
+p4 <- as.ggplot(~plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size = 3, efflabs_size=2,
+                             sortlabs = sortlabs[9:11], title_text = ""))
 
+style_effect_plot <- function(p) {
+  p +
+    theme(
+      plot.background = element_rect(
+        colour = "grey40",
+        fill = "white",
+        linewidth = 0.6
+      ),
+      plot.margin = margin(6, 6, 6, 6)
+    )
+}
+
+p1 <- style_effect_plot(p1)
+p2 <- style_effect_plot(p2)
+p3 <- style_effect_plot(p3)
+p4 <- style_effect_plot(p4)
+
+combined_plot <-
+  p1 + plot_spacer() +
+  p2 + plot_spacer() +
+  p3 + plot_spacer() +
+  p4 +
+  plot_layout(
+    nrow = 1,
+    widths = c(3, 0.15, 4, 0.15, 4, 0.15, 4)
+  )
+
+ggsave(
+  "Sachs/SachsEffects_4_block.pdf",
+  combined_plot,
+  width = 16,
+  height = 4
+)
