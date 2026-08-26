@@ -419,7 +419,6 @@ plotCompareEffects <- function(effects4plot,
                                    label_size = 1,
                                    title_text = "Distributions of Downstream Causal Effects\n") {
   
-  orderingy = c(0, sortlabs) 
   ## Provide labels in sortlabs in a customised order if desired
   ### Pick an ordering which matches to some extent the node hierarchy on the DAG
   
@@ -445,31 +444,39 @@ plotCompareEffects <- function(effects4plot,
       )
     }
   }
+
+  Wdist <- Wdist[sortlabs, sortlabs, drop = FALSE]
+
+  row_ids <- sortlabs[rowSums(Wdist) > 0]
+  col_ids <- sortlabs[colSums(Wdist) > 0]
+  
+  nr <- length(row_ids)
+  nc <- length(col_ids)
+
+  Wdist <- Wdist[row_ids, col_ids, drop = FALSE]
   
   Wscaled <- pmin(Wdist, 1)
   heatcols <- colorRampPalette(c("white", "gold", "orange", "red"))(100)
   
-  par(mfrow = c(nn+1, nn+1))
+  par(mfrow = c(nr+1, nc+1))
   par(oma = rep(0.2,4) + c(0,0,5*(title_text!=""),0))
   par(mar = rep(0,4))
   
-  for(i in 0:nn+1){
-    ii <- orderingy[i+1]
-    for(j in 0:nn){
-      jj <- orderingy[j+1]
-      if (i == (nn + 1) || j == 0) {
+  for(ii in 0:nr+1){
+    for (jj in 0:nc) {  
+      if (ii == (nr + 1) || jj == 0) {
         setPlot(xlim = c(-1.1, 1.1), ylim = c(0, 1), col = "darkorchid4")
-        if (j == 0 && i < (nn + 1)) {
-          text(0, 0.5, parse(text = efflabs[ii]), cex = label_size)
+        if (jj == 0 && ii <= nr) {
+          text(0, 0.5, parse(text = efflabs[row_ids[ii]]), cex = label_size)
         }
-        if (i == (nn + 1) && j > 0) {
-          text(0, 0.5, parse(text = efflabs[jj]), srt = 90, cex = label_size)
+        if (ii == (nr + 1) && jj > 0) {
+          text(0, 0.5, parse(text = efflabs[col_ids[jj]]), srt = 90, cex = label_size)
         }
       } else {
         heat_id <- max(1, ceiling(Wscaled[ii, jj] * 100))
         heat_col <- adjustcolor(heatcols[heat_id], alpha.f = 0.45)
 
-        vals <- effsarray[ii, jj, ]
+        vals <- effsarray[row_ids[ii], col_ids[jj], ]
         if (sd(vals) > 1e-8) {
           d <- density(vals)
           setPlot(d, xlim = c(-2, 2), col = "dodgerblue")
