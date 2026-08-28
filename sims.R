@@ -228,6 +228,7 @@ results_small <- results %>%
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD),
+         searchspacetime = as.numeric(searchspacetime),
          time = as.numeric(time))
 # add text medians
 # medians <- results_small %>%

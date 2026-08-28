@@ -39,7 +39,7 @@ burnin <- 3000
 L <- 20
 
 param_grid <- expand.grid(
-  N = c(200),
+  N = c(100),
   n = c(10, 20, 50, 100),
   d = c(5),
   bge.par = 0.01
