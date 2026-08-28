@@ -496,6 +496,7 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   end <- Sys.time()
   time2 <- end - inter
   time <- end - start + searchspace$time
+  dp.fit$searchspacetime <- as.numeric(searchspace$time, units = "secs")
   dp.fit$time <- as.numeric(time, units = "secs")
   dp.fit$time2 <- as.numeric(time2, units = "secs")
   return(dp.fit)
@@ -519,8 +520,8 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
   
   bge.fit$traceadd$incidence <- bge.fit$traceadd$incidence[-(1:toburn)]
   time <- Sys.time() - start + searchspace$time
+  bge.fit$searchspacetime <- as.numeric(searchspace$time, units = "secs")
   bge.fit$time <- as.numeric(time, units = "secs")
-  
   return(bge.fit)
 }
 ## ---------------------------------------------------------------------------------------------------------------------------------------------------------

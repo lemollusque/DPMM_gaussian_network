@@ -202,7 +202,7 @@ with_progress({
     
     colnames(iter_results) <- c(
       "ESHD", "eTP", "eFP", "TPR", "FPR_P",
-      "time", "parameter", "method", "graph",
+      "searchspacetime", "time", "parameter", "method", "graph",
       "N", "n", "d", "rep", "bge.par", "job_id", "job_seed"
     )
     
