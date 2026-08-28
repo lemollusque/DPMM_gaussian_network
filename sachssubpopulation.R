@@ -138,10 +138,15 @@ for (cl in clusters) {
 }
 
 # cluster contribution by number of effect samples
-cluster_weights <- eff_df %>%
-  group_by(cluster) %>%
-  summarise(n = n()) %>%
-  mutate(weight = n / sum(n))
+cluster_weights <- as.data.frame(
+  prop.table(table(hard_clusters))
+)
+
+names(cluster_weights) <- c("cluster", "weight")
+cluster_weights$cluster <- paste0(
+  "cluster ",
+  cluster_weights$cluster
+)
 
 eff_df <- eff_df %>%
   left_join(cluster_weights, by = "cluster")
