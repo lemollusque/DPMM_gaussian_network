@@ -86,3 +86,56 @@ plotEffects(effects4plot = data4plot$alleffs, xmargs = c(0.1, 0.3), label_size =
             sortlabs = 1:11, title_text = "")
 dev.off()
 
+# edge proba
+edge_probabilities <- function(dags) {
+  prob_mat <- Reduce(
+    "+",
+    lapply(dags, function(x) as.matrix(x) * 1)
+  ) / length(dags)
+  
+  diag(prob_mat) <- NA_real_
+  
+  as.data.frame(
+    as.table(prob_mat),
+    responseName = "probability"
+  ) %>%
+    filter(!is.na(probability)) %>%
+    transmute(
+      from = Var1,
+      to = Var2,
+      probability
+    )
+}
+
+bgn <- ncol(Imat)
+sampledDAGs <- lapply(data4plot$alldigraphs, function(A) {
+  A[-(1:bgn), -(1:bgn), drop = FALSE]
+})
+
+
+edge_probs <- edge_probabilities(sampledDAGs)
+edge_summary <- edge_probs %>%
+  summarise(
+    displayed_edges = sum(probability > 0.1),
+    
+    low_probability = sum(
+      probability > 0.1 & probability < 0.5
+    ),
+    
+    moderate_probability = sum(
+      probability >= 0.5 & probability < 0.8
+    ),
+    
+    high_probability = sum(
+      probability >= 0.8
+    ),
+    
+    very_high_probability = sum(
+      probability >= 0.9
+    ),
+    
+    proportion_high = high_probability / displayed_edges,
+    proportion_very_high = very_high_probability / displayed_edges
+  )
+
+edge_summary
