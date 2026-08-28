@@ -227,7 +227,8 @@ results_small <- results %>%
   filter(graph == "pattern") 
 
 results_small <- results_small %>%
-  mutate(ESHD = as.numeric(ESHD))
+  mutate(ESHD = as.numeric(ESHD),
+         time = as.numeric(time))
 # add text medians
 # medians <- results_small %>%
 #   group_by(method, N, n, d) %>%
@@ -322,4 +323,53 @@ ggplot(delta_eshd, aes(x = method, y = delta_ESHD, color = method)) +
     panel.grid.major.x = element_blank(),
     strip.background = element_blank(),
     strip.text = element_text(face = "bold")
+  )
+
+
+# plot time
+results_plot <- results_small %>%
+  pivot_longer(
+    cols = c(time, ESHD),
+    names_to = "outcome",
+    values_to = "value"
+  ) %>%
+  mutate(
+    outcome = factor(
+      outcome,
+      levels = c("time", "ESHD"),
+      labels = c("Time", "ESHD")
+    )
+  )
+
+ggplot(results_plot, aes(x = method, y = value, color = method)) +
+  geom_boxplot(
+    aes(group = method),
+    width = 0.6,
+    outlier.shape = NA,
+    linewidth = 0.6
+  ) +
+  geom_jitter(width = 0.15, alpha = 0.7, size = 0.5) +
+  labs(x = NULL, y = NULL) +
+  facet_grid(
+    rows = vars(outcome),
+    cols = vars(n),
+    scales = "free_y",
+    switch = "y",
+    labeller = labeller(
+      n = function(x) paste("n =", x)
+    )
+  ) +
+  theme_bw() +
+  theme(
+    strip.placement = "outside",
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    strip.text.y.left = element_text(angle = 90),
+    legend.position = "bottom",
+    axis.text.x = element_text(
+      angle = 90,
+      vjust = 0.5,
+      hjust = 1
+    ),
+    panel.grid.major.x = element_blank()
   )
