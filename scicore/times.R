@@ -36,7 +36,7 @@ dp_strength = 1
 dp_fits <- 1
 dp_iter <- 5000
 burnin <- 3000
-L <- 100
+L <- 20
 
 param_grid <- expand.grid(
   N = c(100),
@@ -177,7 +177,7 @@ with_progress({
       am = bge.par,
       dp_prior = list(strength = dp_strength, discount = 0),
       dp_mcmc = list(niter = dp_iter, nburn = burnin, model = dp_model, print_message = F),
-      dp_n_sample = L/n,
+      dp_n_sample = L,
       dp_fits = dp_fits,
       dp_fitspace = "dual"
     )
