@@ -531,7 +531,8 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
 min_detectable_r <- function(N, q = 0, alpha = 0.05, power = 0.8) {
   T_star <- abs(qnorm(alpha / 2))
   z_power <- qnorm(power)
-  tanh((T_star + z_power) / sqrt(N - q - 3))
+  effective_n <- max(1, N - q - 3)
+  tanh((T_star + z_power) / sqrt(effective_n))
 }
 pcor_from_cor <- function(R) {
   P <- -psolve(R)
