@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=times                   #This is the name of your job
+#SBATCH --job-name=job_time                   #This is the name of your job
 #SBATCH --cpus-per-task=16                  #This is the number of cores reserved
 #SBATCH --mem-per-cpu=1G              #This is the memory reserved per core.
 #Total memory reserved: 16GB
