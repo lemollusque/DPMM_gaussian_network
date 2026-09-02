@@ -40,7 +40,7 @@ L <- 20
 
 param_grid <- expand.grid(
   N = c(100),
-  n = c(10, 20, 50),
+  n = c(10, 20, 30),
   d = c(5),
   bge.par = 0.01
 )
@@ -202,7 +202,7 @@ with_progress({
     
     colnames(iter_results) <- c(
       "ESHD", "eTP", "eFP", "TPR", "FPR_P",
-      "searchspacetime", "time", "parameter", "method", "graph",
+      "dpfittime", "time", "parameter", "method", "graph",
       "N", "n", "d", "rep", "bge.par", "job_id", "job_seed"
     )
     

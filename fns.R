@@ -409,6 +409,7 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
     }
 
     # prepare dirichlet gamma list
+    dp_fit_time_start <- Sys.time()
     Gamma_list <- list()
     for (f in seq_len(dp_fits)) {
       for (child in colnames(fitspace)){
@@ -435,9 +436,11 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
     }
     usrpar$membershipp_list = Gamma_list
     score <- scoreparameters("usr", data, usrpar = usrpar)
+    dp_fit_time <- Sys.time() - dp_fit_time_start
   }
   
   if(method == "bge") {
+    dp_fit_time = NA_real_   
     score <- scoreparameters("bge", data, bgepar = list(am = par))
   }
   searchspace <- iterativeMCMC(scorepar = score, startspace = startspace, hardlimit = 14, 
@@ -445,7 +448,7 @@ set.searchspace <- function(data, method, par = 1, alpha = 0.05, usrpar = list(p
   time <- Sys.time() - start
   
   list(score = score, scoretable = searchspace$scoretable, DAG = searchspace$DAG, 
-       maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time)
+       maxorder = searchspace$maxorder, endspace = searchspace$endspace, time = time, dp_fit_time = dp_fit_time)
 }
 DP.partition.mcmc <- function(searchspace, alpha = 0.05, 
                                order = FALSE, burnin = 0.33, iterations = 1000) {
@@ -497,6 +500,7 @@ DP.partition.mcmc <- function(searchspace, alpha = 0.05,
   time2 <- end - inter
   time <- end - start + searchspace$time
   dp.fit$searchspacetime <- as.numeric(searchspace$time, units = "secs")
+  dp.fit$dpfittime <- as.numeric(searchspace$dp_fit_time, units = "secs")
   dp.fit$time <- as.numeric(time, units = "secs")
   dp.fit$time2 <- as.numeric(time2, units = "secs")
   return(dp.fit)
@@ -521,6 +525,7 @@ bge.partition.mcmc <- function(searchspace, alpha = 0.05,
   bge.fit$traceadd$incidence <- bge.fit$traceadd$incidence[-(1:toburn)]
   time <- Sys.time() - start + searchspace$time
   bge.fit$searchspacetime <- as.numeric(searchspace$time, units = "secs")
+  bge.fit$dpfittime <- as.numeric(searchspace$dp_fit_time, units = "secs")
   bge.fit$time <- as.numeric(time, units = "secs")
   return(bge.fit)
 }

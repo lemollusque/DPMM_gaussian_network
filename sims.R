@@ -204,7 +204,7 @@ with_progress({
     
     colnames(iter_results) <- c(
       "ESHD", "eTP", "eFP", "TPR", "FPR_P",
-      "searchspacetime", "time", "parameter", "method", "graph",
+      "dpfittime", "time", "parameter", "method", "graph",
       "N", "n", "d", "rep", "bge.par", "job_id", "job_seed"
     )
     
@@ -228,7 +228,7 @@ results_small <- results %>%
 
 results_small <- results_small %>%
   mutate(ESHD = as.numeric(ESHD),
-         searchspacetime = as.numeric(searchspacetime),
+         dpfittime = as.numeric(dpfittime),
          time = as.numeric(time))
 # add text medians
 # medians <- results_small %>%
@@ -331,7 +331,7 @@ ggplot(delta_eshd, aes(x = method, y = delta_ESHD, color = method)) +
 results_plot <- bind_rows(
   results_small %>%
     pivot_longer(
-      cols = c(searchspacetime, time, ESHD),
+      cols = c(dpfittime, time, ESHD),
       names_to = "outcome",
       values_to = "value"
     ),
@@ -347,10 +347,10 @@ results_plot <- bind_rows(
   mutate(
     outcome = factor(
       outcome,
-      levels = c("searchspacetime", "time", "delta_ESHD"),
+      levels = c("dpfittime", "time", "delta_ESHD"),
       labels = c(
-        "'time DPMM + Iter. MCMC'",
-        "'Time'",
+        "'Time DPMM'",
+        "'Time Total'",
         "Delta * ' E-SHD'"
       )
     )

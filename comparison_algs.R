@@ -72,7 +72,7 @@ compare_results <- function(fit, method_vec, result_df, trueDAG) {
   new <- length(method_vec)
   
   method_vec[new+1] <- "dag"  # Compare dag
-  result_dag <- compareFit(fit$traceadd$incidence, fit$DAG, fit$searchspacetime, fit$time, trueDAG, fit$weights)
+  result_dag <- compareFit(fit$traceadd$incidence, fit$DAG, fit$dpfittime, fit$time, trueDAG, fit$weights)
   result_df <- rbind(result_df, data.frame(t(c(result_dag, method_vec))))
   
   method_vec[new+1] <- "cpdag"  # Compare cpdag
@@ -81,26 +81,26 @@ compare_results <- function(fit, method_vec, result_df, trueDAG) {
   if(!is.null(cpdagList)) {    # check if DAGs are acyclic
     trueCPDAG <- BiDAG:::dagadj2cpadj(trueDAG)
     result_cpdag <- compareFit(cpdagList, BiDAG:::dagadj2cpadj(fit$DAG),
-                              fit$searchspacetime, fit$time, trueCPDAG, fit$weights)
+                              fit$dpfittime, fit$time, trueCPDAG, fit$weights)
     result_df <- rbind(result_df, data.frame(t(c(result_cpdag, method_vec))))
   
     method_vec[new+1] <- "skeleton"  # Compare skeleton
     skelList <- lapply(fit$traceadd$incidence, function(x) Gskel(as.matrix(x)))
     trueskel <- Gskel(trueDAG)
-    result_skel <- compareFit(skelList, Gskel(as.matrix(fit$DAG)), fit$searchspacetime, fit$time, trueskel, fit$weights)
+    result_skel <- compareFit(skelList, Gskel(as.matrix(fit$DAG)), fit$dpfittime, fit$time, trueskel, fit$weights)
     result_df <- rbind(result_df, data.frame(t(c(result_skel, method_vec))))
     
     method_vec[new+1] <- "pattern"  # Compare pattern graph
     pattList <- lapply(cpdagList, function(x) pdag2pattern(x))
     truepatt <- pdag2pattern(trueCPDAG)
-    result_patt <- compareFit(pattList, pdag2pattern(BiDAG:::dagadj2cpadj(fit$DAG)), fit$searchspacetime, fit$time, truepatt, fit$weights)
+    result_patt <- compareFit(pattList, pdag2pattern(BiDAG:::dagadj2cpadj(fit$DAG)), fit$dpfittime, fit$time, truepatt, fit$weights)
     result_df <- rbind(result_df, data.frame(t(c(result_patt, method_vec))))
   }
   return(result_df)
 }
 
 # Compare the fit to the true graph
-compareFit <- function(graphlist, MAPgraph, searchspacetime, time, truegraph, weights = NULL) {
+compareFit <- function(graphlist, MAPgraph, dpfittime, time, truegraph, weights = NULL) {
   SHD <- vector()
   TP <- vector()
   FP <- vector()
@@ -126,7 +126,7 @@ compareFit <- function(graphlist, MAPgraph, searchspacetime, time, truegraph, we
   maxdag <- as.matrix(MAPgraph)
   graphcomp <- compareGs(maxdag, truegraph)
   
-  c(eshd, eTP, eFP, graphcomp[c("TPR", "FPR_P")], searchspacetime, time)
+  c(eshd, eTP, eFP, graphcomp[c("TPR", "FPR_P")], dpfittime, time)
 }
 
 post.edges <- function(fit, weights = NULL) {
