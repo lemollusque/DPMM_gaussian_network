@@ -328,21 +328,37 @@ ggplot(delta_eshd, aes(x = method, y = delta_ESHD, color = method)) +
 
 
 # plot time
-results_plot <- results_small %>%
-  pivot_longer(
-    cols = c(time, ESHD),
-    names_to = "outcome",
-    values_to = "value"
-  ) %>%
+results_plot <- bind_rows(
+  results_small %>%
+    pivot_longer(
+      cols = c(searchspacetime, time, ESHD),
+      names_to = "outcome",
+      values_to = "value"
+    ),
+  
+  delta_eshd %>%
+    pivot_longer(
+      cols = delta_ESHD,
+      names_to = "outcome",
+      values_to = "value"
+    )
+) %>%
+  filter(outcome != "ESHD") %>%
   mutate(
     outcome = factor(
       outcome,
-      levels = c("time", "ESHD"),
-      labels = c("Time", "ESHD")
+      levels = c("searchspacetime", "time", "delta_ESHD"),
+      labels = c(
+        "'time DPMM + Iter. MCMC'",
+        "'Time'",
+        "Delta * ' E-SHD'"
+      )
     )
   )
+results_plot = subset(results_plot, outcome != "ESHD")
 
 ggplot(results_plot, aes(x = method, y = value, color = method)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
   geom_boxplot(
     aes(group = method),
     width = 0.6,
@@ -357,6 +373,7 @@ ggplot(results_plot, aes(x = method, y = value, color = method)) +
     scales = "free_y",
     switch = "y",
     labeller = labeller(
+      outcome = label_parsed,
       n = function(x) paste("n =", x)
     )
   ) +
